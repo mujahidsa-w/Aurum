@@ -67,6 +67,15 @@ jobs:
               total += n
           if total == 0:
               raise SystemExit("ERROR: -Werror not found in Apple toolchains")
+          # New clang checks access in template friends: TScriptInterface's operator<<
+          # calls the private FScriptInterface::Serialize -> make it public.
+          si = Path("Engine/Source/Runtime/CoreUObject/Public/UObject/ScriptInterface.h")
+          s, n = re.subn(r'^([ \t]*)((?:\w+_API[ \t]+)?FArchive[ \t]*&[ \t]*Serialize[ \t]*\([^;\n]*\)[ \t]*;)',
+                         r'\1public:\n\1\2', si.read_text(), count=1, flags=re.M)
+          if n != 1:
+              raise SystemExit("ERROR: FScriptInterface::Serialize not found")
+          si.write_text(s)
+          print("ScriptInterface.h: Serialize is now public")
           PY
           sed -i '' 's|http://cdn.unrealengine.com/dependencies|https://cdn.unrealengine.com/dependencies|g' Engine/Build/Commit.gitdeps.xml
 
