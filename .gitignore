@@ -26,3 +26,6 @@ DerivedDataCache/
 .DS_Store
 Thumbs.db
 ._*
+
+# Room service
+Tools/RoomService/node_modules/
