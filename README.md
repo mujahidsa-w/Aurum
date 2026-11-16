@@ -4,9 +4,32 @@
 
 An Unreal Engine 4 battle royale prototype focused on gameplay systems built with Blueprints and C++.
 
+> ## Multiplayer & mobile layer (this repository)
+>
+> This repository adds a C++ module (`PUBG_BP_Project/Source/PUBG_Blueprint`) on top of the
+> original Blueprint project: real multiplayer (LAN rooms, direct IP, online rooms on dedicated
+> servers), a lobby, server-authoritative combat and inventory, multi-touch mobile controls with a
+> layout editor, graphics/FPS settings and Android/iOS configuration. **No existing Blueprint was
+> edited or reparented**; single-player behaves exactly as before.
+>
+> The uploaded `PUBG-UNREAL-main.zip` only contains Git LFS pointer files, so the real assets must
+> come from the original repository - see **[Docs/03-Build-And-Run.md](Docs/03-Build-And-Run.md)**.
+>
+> | Document (Arabic) | Contents |
+> |---|---|
+> | [01-Project-Analysis](Docs/01-Project-Analysis.md) | analysis of the original project, from its Blueprint binaries |
+> | [02-Architecture](Docs/02-Architecture.md) | how the new layer works, authority model |
+> | [03-Build-And-Run](Docs/03-Build-And-Run.md) | assets, build, editor tests, Android, iOS, dedicated server, room service |
+> | [04-Editor-Integration](Docs/04-Editor-Integration.md) | what works automatically, optional Blueprint refactors |
+> | [05-Testing-Report](Docs/05-Testing-Report.md) | what was tested and what still needs testing in Unreal |
+>
+> The C++ code was written without an Unreal Engine installation and has **not been compiled yet**;
+> the logic, room service and convention checks that could run without the engine pass
+> (`Tools/ci/run_all_tests.sh`).
+
 ## Overview
 
-This project recreates core PUBG-style mechanics in UE4, with an emphasis on character movement, item interaction, inventory management, and weapon handling. It is currently a single-player prototype and does not include multiplayer support.
+This project recreates core PUBG-style mechanics in UE4, with an emphasis on character movement, item interaction, inventory management, and weapon handling. The original prototype was single-player; the C++ layer described above adds multiplayer and mobile support.
 
 Engine version: `UE 4.26.2`  
 Project start: `May 2021`
@@ -45,6 +68,15 @@ Project start: `May 2021`
 | Show inventory | `Tab` |
 | Freelook | `Hold Left Alt` |
 | Toggle map | `M` (planned) |
+| In-game menu (new) | `Esc` / `F10` |
+
+### Touch controls (new)
+
+Left side: floating movement stick (light push = walk, push far up = sprint lock). Drag anywhere
+free to look; the fire and aim buttons can also be dragged to aim. Buttons: FIRE (x2), ADS (hold),
+SCOPE (tap), JUMP, CROUCH, PRONE, SPRINT, RELOAD, SWAP, BAG, PICK UP (appears near items), USE,
+MODE, HOLSTER, EYE (free look), MENU, plus optional 1 / 2 / DROP / WALK. Every button injects the
+same input action as the keyboard key above. MENU > EDIT BUTTON LAYOUT moves, resizes and hides them.
 
 ## Tech Stack
 
@@ -84,9 +116,10 @@ To open or extend the project, use Unreal Engine `4.26.2`. General UE4 hardware 
 
 ## Current Scope
 
-- Single-player prototype
+- Single-player prototype (original Blueprints) plus the multiplayer / mobile C++ layer
 - Focused on gameplay systems rather than live-service features
-- Multiplayer is not implemented yet
+- Multiplayer: LAN rooms, direct IP, online rooms via `Tools/RoomService` and dedicated servers
+- Known limits of the multiplayer layer are listed in `Docs/04-Editor-Integration.md`
 
 ## Contributing
 

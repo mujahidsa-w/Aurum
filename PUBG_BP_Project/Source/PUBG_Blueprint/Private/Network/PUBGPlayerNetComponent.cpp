@@ -537,6 +537,10 @@ void UPUBGPlayerNetComponent::ReconcileWeapons(const FPUBGInventorySnapshot& Sna
 			bOldUsed[Match] = true;
 			FinalSlots[Slot] = ID;
 			FinalMags[Slot] = Mags[Match];
+			// Extended magazines (ST_Item_WeaponAcc.ClipCapacity) raise the clip above the
+			// table value: follow the largest clip reported, bounded to twice the base size.
+			const int32 BaseClip = FMath::Max(1, PUBGItemData::GetWeaponStats(ID).ClipSize);
+			FinalMags[Slot].ClipSize = FMath::Clamp(FMath::Max(FinalMags[Slot].ClipSize, ReportedClip[Slot]), BaseClip, BaseClip * 2);
 			// A higher clip count for the same weapon means the Blueprint reloaded it.
 			int32 Before = PreviousClip[Match];
 			if (PreviousID[Match] == ID && ReportedClip[Slot] > Before)
@@ -671,6 +675,13 @@ void UPUBGPlayerNetComponent::ReconcileItems(const FPUBGInventorySnapshot& Snaps
 			}
 			const PUBGLogic::FReconcileResult R = PUBGLogic::ReconcileItemCount(Ver.Amount, RepAmount, CountClaimable(Ver.ItemType, Ver.ID));
 			Ver.Amount += ClaimFromWorld(Ver.ItemType, Ver.ID, R.Claim);
+			if (Ver.ItemType == (uint8)EPUBGItemType::Fashion)
+			{
+				// Outfits are cosmetic and the Blueprint may grant default clothes that were
+				// never on the ground: remove a matching ground copy if there is one, never reject.
+				Ver.Amount = RepAmount;
+				continue;
+			}
 			if (R.Reject > 0)
 			{
 				RejectedUntil.Add(Key, Now + 10.0);
