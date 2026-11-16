@@ -1,0 +1,106 @@
+name: Aurum Unreal Engine 4.26
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-editor:
+    name: Build UE 4.26 Editor + Aurum C++ (Mac)
+    runs-on: macos-latest
+    timeout-minutes: 360
+
+    steps:
+      # Older Xcode = older clang = fewer errors on UE 4.26. Delete the rest to free disk.
+      - name: Pick oldest Xcode and free disk
+        run: |
+          df -h /
+          OLDEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | python3 -c "import sys,re;l=[x.strip() for x in sys.stdin if x.strip()];k=lambda p:[int(n) for n in re.findall(r'\d+',p.rsplit('Xcode_',1)[-1])];print(sorted(l,key=k)[0] if l else '')")
+          if [ -n "$OLDEST" ]; then sudo xcode-select -s "$OLDEST/Contents/Developer"; fi
+          KEEP=$(cd "$(xcode-select -p)/../.." && pwd -P)
+          for X in /Applications/Xcode*.app; do
+            R=$(cd "$X" 2>/dev/null && pwd -P || echo none)
+            [ "$R" = "$KEEP" ] || sudo rm -rf "$X" || true
+          done
+          xcrun simctl delete all || true
+          sudo rm -rf /usr/local/share/dotnet ~/Library/Android /usr/local/lib/android || true
+          xcodebuild -version
+          clang --version
+          df -h /
+
+      # Code only: skips the 3 GB AssetParts (not needed to compile).
+      - name: Checkout Aurum
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+          sparse-checkout: |
+            PUBG_BP_Project
+
+      - name: Checkout Unreal Engine
+        uses: actions/checkout@v4
+        with:
+          repository: EpicGames/UnrealEngine
+          ref: 4.26
+          token: ${{ secrets.EPIC_GITHUB_TOKEN }}
+          path: UnrealEngine
+          lfs: false
+
+      # One patch for the whole class of "new clang" errors instead of chasing flags one by one.
+      - name: Patch toolchain for new Xcode
+        working-directory: UnrealEngine
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          extra = "-Wno-error -Wno-enum-constexpr-conversion -Wno-incompatible-function-pointer-types -Wno-int-conversion"
+          total = 0
+          for f in ["Engine/Source/Programs/UnrealBuildTool/Platform/Mac/MacToolChain.cs",
+                    "Engine/Source/Programs/UnrealBuildTool/Platform/IOS/IOSToolChain.cs"]:
+              p = Path(f)
+              if not p.is_file():
+                  continue
+              s, n = re.subn(r'-Werror(?![=\w-])', extra, p.read_text())
+              p.write_text(s)
+              print(f"{f}: replaced {n}")
+              total += n
+          if total == 0:
+              raise SystemExit("ERROR: -Werror not found in Apple toolchains")
+          PY
+          sed -i '' 's|http://cdn.unrealengine.com/dependencies|https://cdn.unrealengine.com/dependencies|g' Engine/Build/Commit.gitdeps.xml
+
+      - name: Download engine dependencies (no Windows/Linux)
+        working-directory: UnrealEngine
+        run: |
+          chmod +x Setup.command
+          ./Setup.command --exclude=Win32 --exclude=Win64 --exclude=Linux --exclude=Linux32 --exclude=LinuxAArch64 --exclude=HoloLens --exclude=Lumin
+          df -h /
+
+      - name: Generate project files (builds UnrealBuildTool)
+        working-directory: UnrealEngine
+        run: |
+          chmod +x GenerateProjectFiles.command
+          ./GenerateProjectFiles.command
+
+      # Builds the engine editor AND compiles the Aurum C++ module (real compile check).
+      - name: Build editor + Aurum module
+        working-directory: UnrealEngine
+        run: |
+          set -o pipefail
+          ./Engine/Build/BatchFiles/Mac/Build.sh PUBG_BlueprintEditor Mac Development \
+            -project="$GITHUB_WORKSPACE/PUBG_BP_Project/PUBG_Blueprint.uproject" \
+            -WaitMutex 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Verify
+        working-directory: UnrealEngine
+        run: |
+          ls -la Engine/Binaries/Mac | head -20
+          ls -la "$GITHUB_WORKSPACE/PUBG_BP_Project/Binaries/Mac" || true
+          df -h /
+
+      # Puts the real errors at the very end of the log (easy to copy).
+      - name: First errors
+        if: failure()
+        run: |
+          grep -E "error:|Error:|ERROR:" "$RUNNER_TEMP/build.log" | grep -v "Wno-error" | head -40 || true
