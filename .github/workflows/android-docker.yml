@@ -1,0 +1,60 @@
+name: Aurum Android (prebuilt engine)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Free disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache /usr/local/share/boost /usr/local/lib/node_modules
+          sudo docker image prune -af || true
+          df -h /
+
+      - name: Checkout Aurum
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Restore assets
+        run: |
+          chmod +x AssetParts/restore.sh
+          ./AssetParts/restore.sh
+          rm -rf AssetParts .git
+          df -h /
+
+      - name: Android NDK r21 + SDK 29
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;21.1.6352462" "platforms;android-29" "build-tools;29.0.2" > /dev/null
+          sudo rm -rf $ANDROID_HOME/emulator $ANDROID_HOME/system-images || true
+
+      - name: Pull Epic engine image (UE 4.26.2, editor prebuilt)
+        run: |
+          echo "${{ secrets.EPIC_GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull ghcr.io/epicgames/unreal-engine:dev-4.26.2
+          df -h /
+
+      - name: Build, cook and package APK
+        run: |
+          mkdir -p out && chmod -R a+rwX "$GITHUB_WORKSPACE" "$ANDROID_HOME"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" -v "$ANDROID_HOME:/android" \
+            -e ANDROID_HOME=/android -e ANDROID_SDK_ROOT=/android \
+            -e NDKROOT=/android/ndk/21.1.6352462 -e NDK_ROOT=/android/ndk/21.1.6352462 \
+            -e JAVA_HOME=/opt/java \
+            -v "$JAVA_HOME_8_X64:/opt/java" \
+            ghcr.io/epicgames/unreal-engine:dev-4.26.2 \
+            bash -c 'set -o pipefail; /home/ue4/UnrealEngine/Engine/Build/BatchFiles/RunUAT.sh BuildCookRun -project=/work/PUBG_BP_Project/PUBG_Blueprint.uproject -noP4 -platform=Android -cookflavor=ASTC -clientconfig=Development -build -cook -stage -pak -package -archive -archivedirectory=/work/out -unattended -utf8output 2>&1 | tee /work/out/build.log'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Aurum-Android
+          path: out/**/*.apk
+
+      - name: First errors
+        if: failure()
+        run: grep -E "error:|ERROR:|Error:" out/build.log | grep -v LOCTEXT | head -40 || true
