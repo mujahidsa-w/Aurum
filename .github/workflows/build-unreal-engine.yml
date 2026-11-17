@@ -93,10 +93,31 @@ jobs:
           ./GenerateProjectFiles.command
 
       # Builds the engine editor AND compiles the Aurum C++ module (real compile check).
+      # Last run froze at [725/1824] for 5 h: 8 parallel clang on 7 GB RAM -> swap stall.
+      # Cap parallel jobs at 3 and stop early instead of burning 6 hours.
       - name: Build editor + Aurum module
         working-directory: UnrealEngine
+        timeout-minutes: 240
         run: |
           set -o pipefail
+          sudo xcrun simctl runtime delete all || true
+          mkdir -p Engine/Saved/UnrealBuildTool
+          cat > Engine/Saved/UnrealBuildTool/BuildConfiguration.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8" ?>
+          <Configuration xmlns="https://www.unrealengine.com/BuildConfiguration">
+            <LocalExecutor>
+              <MaxProcessorCount>3</MaxProcessorCount>
+              <ProcessorCountMultiplier>1</ProcessorCountMultiplier>
+            </LocalExecutor>
+            <ParallelExecutor>
+              <MaxProcessorCount>3</MaxProcessorCount>
+              <ProcessorCountMultiplier>1</ProcessorCountMultiplier>
+            </ParallelExecutor>
+          </Configuration>
+          XML
+          sed -i '' 's/^          //' Engine/Saved/UnrealBuildTool/BuildConfiguration.xml
+          ( while sleep 900; do echo "== $(date) $(df -h / | tail -1) $(memory_pressure | tail -1)"; done ) &
+          df -h /
           ./Engine/Build/BatchFiles/Mac/Build.sh PUBG_BlueprintEditor Mac Development \
             -project="$GITHUB_WORKSPACE/PUBG_BP_Project/PUBG_Blueprint.uproject" \
             -WaitMutex 2>&1 | tee "$RUNNER_TEMP/build.log"
