@@ -1,31 +1,69 @@
-name: iOS Build Preparation
+
+name: UE 4.26.2 iOS Source Check
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  prepare:
+  source-check:
+    name: Verify UE 4.26.2 and iOS toolchain
     runs-on: macos-latest
-    timeout-minutes: 360
+    timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Aurum project
+        uses: actions/checkout@v4
         with:
+          ref: main
           lfs: true
+          path: Aurum
 
-      - name: Show project size
-        run: |
-          echo "Total project size:"
-          du -sh .
-          echo ""
-          echo "Size per top folder:"
-          du -sh */ 2>/dev/null | sort -rh
-          echo ""
-          echo "Content size:"
-          du -sh PUBG_BP_Project/Content 2>/dev/null
+      - name: Checkout official Unreal Engine source
+        uses: actions/checkout@v4
+        with:
+          repository: EpicGames/UnrealEngine
+          ref: 4.26
+          token: ${{ secrets.EPIC_GITHUB_TOKEN }}
+          path: UnrealEngine
+          fetch-depth: 1
 
-      - name: Show disk space on the runner
+      - name: Verify project and engine version
+        shell: bash
         run: |
-          echo "Free disk space on this runner:"
+          set -euo pipefail
+
+          test -f Aurum/PUBG_BP_Project/PUBG_Blueprint.uproject
+          test -f UnrealEngine/Setup.command
+          test -d UnrealEngine/Engine/Source
+          test -f UnrealEngine/Engine/Build/Build.version
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          p = Path("UnrealEngine/Engine/Build/Build.version")
+          data = json.loads(p.read_text())
+
+          print("Engine version:", data.get("MajorVersion"),
+                data.get("MinorVersion"), data.get("PatchVersion"))
+
+          assert (
+              data.get("MajorVersion"),
+              data.get("MinorVersion"),
+              data.get("PatchVersion")
+          ) == (4, 26, 2), "Expected Unreal Engine 4.26.2"
+
+          print("UE 4.26.2 verified")
+          PY
+
+      - name: Check macOS and iOS build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
           df -h
-        
