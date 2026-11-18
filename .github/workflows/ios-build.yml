@@ -28,6 +28,4 @@ jobs:
         run: |
           echo "Free disk space on this runner:"
           df -h
-
-      - name: Note
-        run: echo "Next step: download Unreal Engine 4.26 source and build for iOS."
+        
