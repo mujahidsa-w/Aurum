@@ -1,2 +1,0 @@
-  - name: List available Xcode versions
-    run: ls /Applications | grep Xcode
