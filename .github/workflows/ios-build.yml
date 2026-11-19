@@ -30,3 +30,15 @@ jobs:
 
       - name: Check space after clone
         run: df -h /
+
+      - name: Setup Unreal Engine dependencies
+        working-directory: ~/UnrealEngine
+        run: |
+          ./Setup.sh
+          ./GenerateProjectFiles.sh
+
+      - name: Build UnrealBuildTool
+        working-directory: ~/UnrealEngine
+        run: |
+          xcodebuild -version
+          ./Engine/Build/BatchFiles/Mac/Build.sh UnrealBuildTool Mac Development -canskiplink
