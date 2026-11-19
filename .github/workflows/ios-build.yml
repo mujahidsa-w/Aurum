@@ -25,20 +25,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
         run: |
-          git clone --depth 1 --branch 4.26 https://x-access-token:${GH_TOKEN}@github.com/EpicGames/UnrealEngine.git ~/UnrealEngine
-          du -sh ~/UnrealEngine
+          git clone --depth 1 --branch 4.26 https://x-access-token:${GH_TOKEN}@github.com/EpicGames/UnrealEngine.git "$HOME/UnrealEngine"
+          du -sh "$HOME/UnrealEngine"
 
       - name: Check space after clone
         run: df -h /
 
       - name: Setup Unreal Engine dependencies
-        working-directory: ~/UnrealEngine
         run: |
+          cd "$HOME/UnrealEngine"
           ./Setup.sh
           ./GenerateProjectFiles.sh
 
       - name: Build UnrealBuildTool
-        working-directory: ~/UnrealEngine
         run: |
+          cd "$HOME/UnrealEngine"
           xcodebuild -version
           ./Engine/Build/BatchFiles/Mac/Build.sh UnrealBuildTool Mac Development -canskiplink
