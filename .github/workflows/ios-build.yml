@@ -5,7 +5,7 @@ on:
 
 jobs:
   prepare:
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 360
 
     steps:
@@ -21,11 +21,16 @@ jobs:
       - name: Show disk space
         run: df -h /
 
-      - name: Clone Unreal Engine 5.4 source
+      - name: Select Xcode 26.1.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Clone Unreal Engine 5.8 source
         env:
           GH_TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
         run: |
-          git clone --depth 1 --branch 5.4 https://x-access-token:${GH_TOKEN}@github.com/EpicGames/UnrealEngine.git "$HOME/UnrealEngine"
+          git clone --depth 1 --branch 5.8 https://x-access-token:${GH_TOKEN}@github.com/EpicGames/UnrealEngine.git "$HOME/UnrealEngine"
           du -sh "$HOME/UnrealEngine"
 
       - name: Setup Unreal Engine dependencies
@@ -38,8 +43,3 @@ jobs:
         run: |
           cd "$HOME/UnrealEngine"
           ./Engine/Build/BatchFiles/Mac/Build.sh UnrealEditor Mac Development -canskiplink
-
-      - name: Convert project to UE 5.4
-        working-directory: ${{ github.workspace }}/PUBG_BP_Project
-        run: |
-          "$HOME/UnrealEngine/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" PUBG_Blueprint.uproject -run=ConvertProject -unattended -nopause || true
