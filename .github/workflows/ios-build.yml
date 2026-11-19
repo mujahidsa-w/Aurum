@@ -41,4 +41,5 @@ jobs:
         run: |
           cd "$HOME/UnrealEngine"
           xcodebuild -version
-          Engine/Build/BatchFiles/MacOS/Build.sh UnrealBuildTool Mac Development -NoHotReload
+                Engine/Build/BatchFiles/Mac/Build.sh UnrealBuildTool Mac Development -NoHotReload
+
