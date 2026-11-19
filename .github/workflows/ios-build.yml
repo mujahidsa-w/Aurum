@@ -30,15 +30,52 @@ jobs:
           path: UnrealEngine
           fetch-depth: 1
 
-      - name: Verify project and engine version
+      - name: Debug project and engine paths
+        shell: bash
+        run: |
+          echo "=== Current directory ==="
+          pwd
+
+          echo "=== Aurum repository ==="
+          ls -la Aurum
+
+          echo "=== Project folder ==="
+          ls -la Aurum/PUBG_BP_Project || true
+
+          echo "=== Find all Unreal project files ==="
+          find Aurum -type f -name "*.uproject" -print
+
+          echo "=== Unreal Engine root ==="
+          ls -la UnrealEngine
+
+          echo "=== Engine build folder ==="
+          ls -la UnrealEngine/Engine/Build || true
+
+          echo "=== Required path checks ==="
+          for p in \
+            "Aurum/PUBG_BP_Project/PUBG_Blueprint.uproject" \
+            "UnrealEngine/Setup.command" \
+            "UnrealEngine/Engine/Source" \
+            "UnrealEngine/Engine/Build/Build.version"
+          do
+            if [ -e "$p" ]; then
+              echo "FOUND: $p"
+            else
+              echo "MISSING: $p"
+            fi
+          done
+
+      - name: Verify Unreal Engine version
         shell: bash
         run: |
           set -euo pipefail
 
-          test -f Aurum/PUBG_BP_Project/PUBG_Blueprint.uproject
-          test -f UnrealEngine/Setup.command
-          test -d UnrealEngine/Engine/Source
-          test -f UnrealEngine/Engine/Build/Build.version
+          VERSION_FILE="UnrealEngine/Engine/Build/Build.version"
+
+          if [ ! -f "$VERSION_FILE" ]; then
+            echo "ERROR: Build.version not found."
+            exit 1
+          fi
 
           python3 - <<'PY'
           import json
@@ -47,23 +84,31 @@ jobs:
           p = Path("UnrealEngine/Engine/Build/Build.version")
           data = json.loads(p.read_text())
 
-          print("Engine version:", data.get("MajorVersion"),
-                data.get("MinorVersion"), data.get("PatchVersion"))
+          major = data.get("MajorVersion")
+          minor = data.get("MinorVersion")
+          patch = data.get("PatchVersion")
 
-          assert (
-              data.get("MajorVersion"),
-              data.get("MinorVersion"),
-              data.get("PatchVersion")
-          ) == (4, 26, 2), "Expected Unreal Engine 4.26.2"
+          print(f"Detected Unreal Engine: {major}.{minor}.{patch}")
 
-          print("UE 4.26.2 verified")
+          if (major, minor, patch) != (4, 26, 2):
+              raise SystemExit("ERROR: Expected Unreal Engine 4.26.2")
+
+          print("SUCCESS: UE 4.26.2 verified.")
           PY
 
       - name: Check macOS and iOS build tools
         shell: bash
         run: |
           set -euo pipefail
+
+          echo "=== macOS ==="
           sw_vers
+
+          echo "=== Xcode ==="
           xcodebuild -version
+
+          echo "=== iOS SDK ==="
           xcrun --sdk iphoneos --show-sdk-version
+
+          echo "=== Available disk space ==="
           df -h
