@@ -37,9 +37,8 @@ jobs:
           ./Setup.sh
           ./GenerateProjectFiles.sh
 
-      - name: Build UnrealBuildTool
+      - name: Build Unreal Engine (Mac Editor)
         run: |
           cd "$HOME/UnrealEngine"
           xcodebuild -version
-                Engine/Build/BatchFiles/Mac/Build.sh UnrealBuildTool Mac Development -NoHotReload
-
+          ./Engine/Build/BatchFiles/Mac/Build.sh UE4Editor Mac Development -canskiplink
