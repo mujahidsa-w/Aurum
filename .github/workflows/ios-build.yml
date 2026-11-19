@@ -1,114 +1,32 @@
-
-name: UE 4.26.2 iOS Source Check
+name: iOS Build Preparation
 
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
-  source-check:
-    name: Verify UE 4.26.2 and iOS toolchain
+  prepare:
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 360
 
     steps:
-      - name: Checkout Aurum project
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: main
           lfs: true
-          path: Aurum
 
-      - name: Checkout official Unreal Engine source
-        uses: actions/checkout@v4
-        with:
-          repository: EpicGames/UnrealEngine
-          ref: 4.26
-          token: ${{ secrets.EPIC_GITHUB_TOKEN }}
-          path: UnrealEngine
-          fetch-depth: 1
-
-      - name: Debug project and engine paths
-        shell: bash
+      - name: Show project size
         run: |
-          echo "=== Current directory ==="
-          pwd
+          du -sh .
+          du -sh PUBG_BP_Project/Content
 
-          echo "=== Aurum repository ==="
-          ls -la Aurum
+      - name: Show disk space
+        run: df -h /
 
-          echo "=== Project folder ==="
-          ls -la Aurum/PUBG_BP_Project || true
-
-          echo "=== Find all Unreal project files ==="
-          find Aurum -type f -name "*.uproject" -print
-
-          echo "=== Unreal Engine root ==="
-          ls -la UnrealEngine
-
-          echo "=== Engine build folder ==="
-          ls -la UnrealEngine/Engine/Build || true
-
-          echo "=== Required path checks ==="
-          for p in \
-            "Aurum/PUBG_BP_Project/PUBG_Blueprint.uproject" \
-            "UnrealEngine/Setup.command" \
-            "UnrealEngine/Engine/Source" \
-            "UnrealEngine/Engine/Build/Build.version"
-          do
-            if [ -e "$p" ]; then
-              echo "FOUND: $p"
-            else
-              echo "MISSING: $p"
-            fi
-          done
-
-      - name: Verify Unreal Engine version
-        shell: bash
+      - name: Clone Unreal Engine 4.26 source
+        env:
+          GH_TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
+          git clone --depth 1 --branch 4.26 https://x-access-token:${GH_TOKEN}@github.com/EpicGames/UnrealEngine.git ~/UnrealEngine
+          du -sh ~/UnrealEngine
 
-          VERSION_FILE="UnrealEngine/Engine/Build/Build.version"
-
-          if [ ! -f "$VERSION_FILE" ]; then
-            echo "ERROR: Build.version not found."
-            exit 1
-          fi
-
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          p = Path("UnrealEngine/Engine/Build/Build.version")
-          data = json.loads(p.read_text())
-
-          major = data.get("MajorVersion")
-          minor = data.get("MinorVersion")
-          patch = data.get("PatchVersion")
-
-          print(f"Detected Unreal Engine: {major}.{minor}.{patch}")
-
-          if (major, minor, patch) != (4, 26, 2):
-              raise SystemExit("ERROR: Expected Unreal Engine 4.26.2")
-
-          print("SUCCESS: UE 4.26.2 verified.")
-          PY
-
-      - name: Check macOS and iOS build tools
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "=== macOS ==="
-          sw_vers
-
-          echo "=== Xcode ==="
-          xcodebuild -version
-
-          echo "=== iOS SDK ==="
-          xcrun --sdk iphoneos --show-sdk-version
-
-          echo "=== Available disk space ==="
-          df -h
+      - name: Check space after clone
+        run: df -h /
