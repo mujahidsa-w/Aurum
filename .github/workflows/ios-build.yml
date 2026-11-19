@@ -31,6 +31,9 @@ jobs:
       - name: Check space after clone
         run: df -h /
 
+      - name: List available Xcode versions
+        run: ls /Applications | grep Xcode
+
       - name: Setup Unreal Engine dependencies
         run: |
           cd "$HOME/UnrealEngine"
