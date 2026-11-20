@@ -36,7 +36,21 @@ jobs:
       - name: Setup Unreal Engine dependencies
         run: |
           cd "$HOME/UnrealEngine"
-          ./Setup.sh
+
+          for i in 1 2 3; do
+            if ./Setup.sh; then
+              break
+            fi
+
+            echo "Setup attempt $i failed, retrying..."
+            sleep 30
+
+            if [ "$i" -eq 3 ]; then
+              echo "Setup failed after 3 attempts."
+              exit 1
+            fi
+          done
+
           ./GenerateProjectFiles.sh
 
       - name: Build Unreal Engine Editor
