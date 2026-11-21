@@ -11,3 +11,5 @@
 *.wav filter=lfs diff=lfs merge=lfs -text
 *.xcf filter=lfs diff=lfs merge=lfs -text
 *.jpg filter=lfs diff=lfs merge=lfs -text
+Branding/** !filter !diff !merge -text
+PUBG_BP_Project/Build/** !filter !diff !merge -text

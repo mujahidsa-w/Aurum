@@ -1,0 +1,58 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "",
+	"Category": "",
+	"Description": "PUBG-UNREAL: Blueprint gameplay + C++ multiplayer / mobile layer",
+	"Modules": [
+		{
+			"Name": "PUBG_Blueprint",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"UMG"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "OnlineSubsystem",
+			"Enabled": true
+		},
+		{
+			"Name": "OnlineSubsystemNull",
+			"Enabled": true
+		},
+		{
+			"Name": "OnlineSubsystemUtils",
+			"Enabled": true
+		},
+		{
+			"Name": "ChaosCloth",
+			"Enabled": true,
+			"Optional": true
+		},
+		{
+			"Name": "ACLPlugin",
+			"Enabled": true,
+			"Optional": true
+		},
+		{
+			"Name": "IOSDeviceProfileSelector",
+			"Enabled": true,
+			"Optional": true
+		},
+		{
+			"Name": "BinkAudioDecoder",
+			"Enabled": true,
+			"Optional": true
+		},
+		{
+			"Name": "RadAudioCodec",
+			"Enabled": true,
+			"Optional": true
+		}
+	],
+	"DisableEnginePluginsByDefault": true
+}

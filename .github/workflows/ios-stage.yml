@@ -1,0 +1,177 @@
+# One stage of the iOS build (called by ios-build.yml). A full UE5 build does not fit
+# in one 6-hour GitHub job, so each stage continues from the files the previous
+# stage saved, and the last one produces the unsigned .ipa.
+name: iOS build stage
+
+on:
+  workflow_call:
+    inputs:
+      stage: { type: number, required: true }
+      prev_state: { type: string, required: false, default: "" }
+      ue_sha: { type: string, required: true }
+      runner: { type: string, required: true }
+      config: { type: string, required: true }
+    outputs:
+      done:
+        description: "true when the .ipa was produced"
+        value: ${{ jobs.build.outputs.done }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Stage ${{ inputs.stage }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    outputs:
+      done: ${{ steps.stage.outputs.done }}
+    env:
+      PROJ_DIR: ${{ github.workspace }}/PUBG_BP_Project
+      UPROJECT: ${{ github.workspace }}/PUBG_BP_Project/PUBG_Blueprint.uproject
+      CONFIG: ${{ inputs.config }}
+      JOB_MINUTES: "350"     # GitHub stops a job at 360
+      RESERVE_MINUTES: "45"  # time kept to save the build state for the next stage
+
+    steps:
+      - name: Start
+        run: |
+          echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+          echo "UE=$HOME/UE" >> "$GITHUB_ENV"
+          echo "OUT_DIR=$RUNNER_TEMP/ipa" >> "$GITHUB_ENV"
+          sysctl -n hw.ncpu hw.memsize machdep.cpu.brand_string || true
+          df -h /
+
+      - name: Checkout Aurum (game files are fetched later, only for cooking)
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Get Unreal Engine source (${{ inputs.ue_sha }})
+        env:
+          TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
+          UE_SHA: ${{ inputs.ue_sha }}
+        run: |
+          mkdir -p "$UE" && cd "$UE"
+          git init -q
+          git remote add origin https://github.com/EpicGames/UnrealEngine.git
+          AUTH=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')
+          for i in 1 2 3; do
+            git -c http.extraheader="AUTHORIZATION: basic $AUTH" fetch -q --depth 1 --no-tags origin "$UE_SHA" && break
+            echo "fetch failed, retrying in 30 s"; sleep 30
+          done
+          git checkout -q FETCH_HEAD
+          git log -1 --format='%H %cd %s'
+
+      - name: Select Xcode for this engine, free disk space
+        run: |
+          XCODE=$(python3 .github/ios/select_xcode.py "$UE")
+          echo "Selected: $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          for X in /Applications/Xcode*.app; do
+            R=$(cd "$X" 2>/dev/null && pwd -P || echo none)
+            [ "$R" = "$XCODE" ] || sudo rm -rf "$X" || true
+          done
+          sudo xcodebuild -license accept || true
+          sudo xcodebuild -runFirstLaunch || true
+          xcodebuild -version
+          xcodebuild -showsdks | grep -q iphoneos || xcodebuild -downloadPlatform iOS
+          # Xcode 26+ ships the Metal shader compiler as a separate download.
+          xcrun -f metal >/dev/null 2>&1 || xcodebuild -downloadComponent MetalToolchain || sudo xcodebuild -downloadComponent MetalToolchain
+          xcrun metal --version
+          xcrun simctl delete all || true
+          sudo xcrun simctl runtime delete all || true
+          sudo rm -rf /usr/local/share/dotnet ~/Library/Android /usr/local/lib/android ~/.ghcup || true
+          command -v zstd >/dev/null || brew install zstd
+          df -h /
+
+      - name: Download engine dependencies (Mac + iOS only)
+        run: |
+          cd "$UE"
+          for i in 1 2 3; do
+            ./Setup.sh --exclude=Win32 --exclude=Win64 --exclude=WinArm64 --exclude=Linux --exclude=Linux32 --exclude=LinuxArm64 --exclude=LinuxAArch64 --exclude=HoloLens && break
+            [ "$i" -eq 3 ] && { echo "::error::Setup.sh failed 3 times"; exit 1; }
+            echo "Setup attempt $i failed, retrying..."; sleep 30
+          done
+          df -h /
+
+      - name: Build UnrealBuildTool, configure it for this runner
+        run: |
+          cd "$UE"
+          ./GenerateProjectFiles.sh
+          python3 "$GITHUB_WORKSPACE/.github/ios/ubt_config.py" "$UE" 3
+
+      - name: Download the previous stage's build state
+        if: inputs.prev_state != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.prev_state }}
+          path: ${{ runner.temp }}/state
+
+      - name: Restore the previous stage's build state
+        if: inputs.prev_state != ''
+        run: |
+          zstd -d -T0 -c "$RUNNER_TEMP/state/state.tar.zst" | tar -xf - -C /
+          rm -rf "$RUNNER_TEMP/state"
+          # The engine was cloned fresh (new file times): give every restored build
+          # product one common, newer time so the build continues instead of restarting.
+          touch "$RUNNER_TEMP/stamp"
+          for d in "$UE/Engine/Binaries/Mac" "$UE/Engine/Binaries/IOS" "$UE/Engine/Intermediate" \
+                   "$PROJ_DIR/Binaries" "$PROJ_DIR/Intermediate" "$PROJ_DIR/Saved"; do
+            [ -e "$d" ] && find "$d" -exec touch -h -r "$RUNNER_TEMP/stamp" {} +
+          done
+          find "$UE/Engine/Plugins" -type d \( -name Intermediate -o -path '*/Binaries/Mac' -o -path '*/Binaries/IOS' \) -prune \
+            | while IFS= read -r d; do find "$d" -exec touch -h -r "$RUNNER_TEMP/stamp" {} +; done
+          ls "$PROJ_DIR/Saved/CI" || true
+          df -h /
+
+      - name: Build (continues the previous stage)
+        id: stage
+        run: .github/ios/stage.sh
+
+      - name: Upload the unsigned iOS app
+        if: steps.stage.outputs.done == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AurumMobile-iOS-${{ inputs.config }}-unsigned
+          path: ${{ env.OUT_DIR }}/*.ipa
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Save build state for the next stage
+        if: success() && steps.stage.outputs.done != 'true'
+        run: |
+          cd /
+          P=()
+          for d in "$UE/Engine/Binaries/Mac" "$UE/Engine/Binaries/IOS" "$UE/Engine/Intermediate" \
+                   "$PROJ_DIR/Binaries" "$PROJ_DIR/Intermediate" "$PROJ_DIR/Saved"; do
+            [ -e "$d" ] && P+=("${d#/}")
+          done
+          while IFS= read -r d; do P+=("${d#/}"); done < <(find "$UE/Engine/Plugins" -type d \
+            \( -name Intermediate -o -path '*/Binaries/Mac' -o -path '*/Binaries/IOS' \) -prune)
+          mkdir -p "$RUNNER_TEMP/save"
+          tar -cf - --exclude '*/Saved/Logs' --exclude '*/Intermediate/ProjectFiles' "${P[@]}" \
+            | zstd -T0 -3 -q -o "$RUNNER_TEMP/save/state.tar.zst"
+          ls -lh "$RUNNER_TEMP/save/state.tar.zst"
+
+      - name: Upload build state
+        if: success() && steps.stage.outputs.done != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-state-${{ inputs.stage }}
+          path: ${{ runner.temp }}/save/state.tar.zst
+          compression-level: 0
+          retention-days: 3
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-logs-stage-${{ inputs.stage }}
+          path: |
+            ${{ runner.temp }}/logs
+            ~/UE/Engine/Programs/UnrealBuildTool/Log*.txt
+            ~/Library/Logs/Unreal Engine/LocalBuildLogs
+          if-no-files-found: ignore
+          retention-days: 14
