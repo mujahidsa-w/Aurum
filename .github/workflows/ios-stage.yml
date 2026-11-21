@@ -83,6 +83,7 @@ jobs:
           sudo xcrun simctl runtime delete all || true
           sudo rm -rf /usr/local/share/dotnet ~/Library/Android /usr/local/lib/android ~/.ghcup || true
           command -v zstd >/dev/null || brew install zstd
+          sudo mdutil -a -i off || true   # no Spotlight indexing of 100+ GB of build files
           df -h /
 
       - name: Download engine dependencies (Mac + iOS only)
@@ -98,7 +99,14 @@ jobs:
       - name: Build UnrealBuildTool, configure it for this runner
         run: |
           cd "$UE"
-          ./GenerateProjectFiles.sh
+          # A broken first build of the C# tools is left behind in obj/ and breaks
+          # every retry; clean it and try again once.
+          ./GenerateProjectFiles.sh || {
+            echo "::warning::GenerateProjectFiles failed; cleaning the C# build output and retrying."
+            find Engine/Source/Programs -type d \( -name obj -o -name bin \) -prune -exec rm -rf {} +
+            rm -rf Engine/Binaries/DotNET
+            ./GenerateProjectFiles.sh
+          }
           python3 "$GITHUB_WORKSPACE/.github/ios/ubt_config.py" "$UE" 3
 
       - name: Download the previous stage's build state
