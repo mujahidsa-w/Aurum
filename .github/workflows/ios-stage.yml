@@ -38,6 +38,11 @@ jobs:
       JOB_MINUTES: "350"     # GitHub stops a job at 360
       RESERVE_MINUTES: "45"  # time kept to save the build state for the next stage
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      # No long-lived MSBuild/compiler servers: they keep files on the build volume
+      # open (job cleanup hung) and share outputs between parallel project builds.
+      MSBUILDDISABLENODEREUSE: "1"
+      DOTNET_CLI_USE_MSBUILD_SERVER: "0"
+      UseSharedCompilation: "false"
       DOTNET_NOLOGO: "1"
       SETUP_EXCLUDES: --exclude=Win32 --exclude=Win64 --exclude=WinArm64 --exclude=Linux --exclude=Linux32 --exclude=LinuxArm64 --exclude=LinuxAArch64 --exclude=HoloLens
 
@@ -120,8 +125,12 @@ jobs:
         run: |
           cd "$UE"
           # If the C# tools still fail to build, clear their output and retry.
+          mkdir -p "$RUNNER_TEMP/logs"
           for i in 1 2 3; do
-            ./GenerateProjectFiles.sh && break
+            set -o pipefail
+            ./GenerateProjectFiles.sh 2>&1 | tee "$RUNNER_TEMP/logs/generate-project-files-$i.log" && break
+            grep -E "error|Error|ERROR" "$RUNNER_TEMP/logs/generate-project-files-$i.log" | sort -u | head -15 \
+              | while IFS= read -r l; do echo "::error::$l"; done
             [ "$i" -eq 3 ] && { echo "::error::UnrealBuildTool could not be built (3 attempts)."; exit 1; }
             echo "::warning::GenerateProjectFiles failed (attempt $i); clearing the C# build output and retrying."
             find Engine/Source/Programs -type d -name obj -prune -exec rm -rf {} +
@@ -203,3 +212,10 @@ jobs:
             ~/Library/Logs/Unreal Engine/LocalBuildLogs
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Unmount the build volume
+        if: always()
+        run: |
+          pkill -f VBCSCompiler || true; pkill -f MSBuild.dll || true; pkill -f dotnet || true
+          sleep 3
+          hdiutil detach -force "$VOL" || true
