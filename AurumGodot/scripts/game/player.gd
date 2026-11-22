@@ -243,6 +243,7 @@ func _physics_process(delta: float) -> void:
 	if (state == State.FREEFALL or state == State.CHUTE) and is_on_floor():
 		_land()
 	_update_camera(delta)
+	update_animation(aiming or _mouse_fire)
 	_handle_fire()
 	if _healing > 0.0:
 		_healing -= delta
@@ -304,7 +305,8 @@ func _ground(delta: float, wish: Vector3, input: Vector2) -> void:
 	# Face where the camera looks when aiming/shooting/moving.
 	if aiming or _mouse_fire or wish.length() > 0.1:
 		visual.rotation.y = lerp_angle(visual.rotation.y, _yaw, 12.0 * delta)
-	visual.scale.y = lerpf(visual.scale.y, 0.72 if crouching else 1.0, 10.0 * delta)
+	if character == null:
+		visual.scale.y = lerpf(visual.scale.y, 0.72 if crouching else 1.0, 10.0 * delta)
 	if global_position.y < -1.5:
 		# Swimming: slow and unable to shoot.
 		velocity.y = maxf(velocity.y, 0.5)

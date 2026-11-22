@@ -23,6 +23,11 @@ const EXTRA_ICONS := {
 
 var player: Node
 var battle: Node
+## Training hides the minimap and shows an objective banner.
+var show_map := true
+var _objective: PanelContainer
+var _objective_title: Label
+var _objective_text: Label
 
 var move_vec := Vector2.ZERO
 var fire_held := false
@@ -248,6 +253,31 @@ func _build() -> void:
 	_slot2_label = _label("", 22, Color(1, 1, 1, 0.55))
 	_slot2_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_anchor(_slot2_label, 1, way, wx if not _touch else -680.0, (wy - 30.0) if not _touch else 196.0, 440, 30)
+
+	_objective = PanelContainer.new()
+	var osb := StyleBoxFlat.new()
+	osb.bg_color = Color(0.03, 0.04, 0.06, 0.82)
+	osb.border_color = Color(1.0, 0.78, 0.1, 0.6)
+	osb.set_border_width_all(2)
+	osb.set_corner_radius_all(10)
+	osb.content_margin_left = 26
+	osb.content_margin_right = 26
+	osb.content_margin_top = 10
+	osb.content_margin_bottom = 12
+	_objective.add_theme_stylebox_override("panel", osb)
+	_objective.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ovb := VBoxContainer.new()
+	ovb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_objective.add_child(ovb)
+	_objective_title = _label("", 34, GOLD)
+	_objective_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ovb.add_child(_objective_title)
+	_objective_text = _label("", 26)
+	_objective_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ovb.add_child(_objective_text)
+	_anchor(_objective, 0.5, 0, -430, 70, 860, 110)
+	_objective.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_objective.visible = false
 
 	_prompt = _label("", 30)
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -518,6 +548,12 @@ func hide_loading() -> void:
 
 # --- Live updates -----------------------------------------------------------------------
 
+func set_objective(title: String, text: String) -> void:
+	_objective.visible = title != ""
+	_objective_title.text = title
+	_objective_text.text = text
+
+
 func add_feed(text: String, color: Color = Color.WHITE) -> void:
 	var l := _label(text, 24, color)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -554,7 +590,9 @@ func _process(delta: float) -> void:
 	c.visible_lines = zoom < 3.0
 	c.gap = 6.0 + float(p.call("spread_multiplier")) * 16.0
 	c.queue_redraw()
-	_map.queue_redraw()
+	_map.visible = show_map
+	if show_map:
+		_map.queue_redraw()
 	var hp := float(p.get("health"))
 	_health_bar.value = hp
 	_health_label.text = str(int(ceil(hp)))

@@ -9,6 +9,7 @@ signal weapon_changed
 const WeaponDB := preload("res://scripts/game/weapon_db.gd")
 const SoldierMesh := preload("res://scripts/game/soldier_mesh.gd")
 const Sfx := preload("res://scripts/game/sfx.gd")
+const RealisticCharacter := preload("res://scripts/game/realistic_character.gd")
 
 const LAYER_WORLD := 1
 const LAYER_PLAYER := 2
@@ -35,6 +36,8 @@ var medkits := 0
 
 var visual: Node3D
 var body_mesh: MeshInstance3D
+## Realistic animated body (null when the stylised fallback soldier is used).
+var character: RealisticCharacter
 var weapon_socket: Node3D
 var weapon_node: Node3D
 var muzzle: Node3D
@@ -48,7 +51,7 @@ var _audio: AudioStreamPlayer3D
 var _fx_audio: AudioStreamPlayer3D
 
 
-func setup_body(accent: Color, layer: int) -> void:
+func setup_body(accent: Color, layer: int, character_id: String = "", outfit: String = "original") -> void:
 	collision_layer = layer
 	collision_mask = LAYER_WORLD | LAYER_PLAYER | LAYER_BOT
 	var shape := CollisionShape3D.new()
@@ -61,12 +64,21 @@ func setup_body(accent: Color, layer: int) -> void:
 	visual = Node3D.new()
 	visual.name = "Visual"
 	add_child(visual)
-	body_mesh = SoldierMesh.create(accent)
-	body_mesh.rotation.y = PI # the soldier model faces +Z; gameplay forward is -Z
-	visual.add_child(body_mesh)
-	weapon_socket = Node3D.new()
-	body_mesh.add_child(weapon_socket)
-	weapon_socket.transform = SoldierMesh.weapon_transform()
+	if character_id != "":
+		var rc := RealisticCharacter.new()
+		visual.add_child(rc)
+		if rc.setup(character_id, outfit):
+			character = rc
+			weapon_socket = rc.weapon_socket
+		else:
+			rc.queue_free()
+	if character == null:
+		body_mesh = SoldierMesh.create(accent)
+		body_mesh.rotation.y = PI # the soldier model faces +Z; gameplay forward is -Z
+		visual.add_child(body_mesh)
+		weapon_socket = Node3D.new()
+		body_mesh.add_child(weapon_socket)
+		weapon_socket.transform = SoldierMesh.weapon_transform()
 	_audio = AudioStreamPlayer3D.new()
 	_audio.max_polyphony = 6
 	_audio.unit_size = 14.0
@@ -165,10 +177,14 @@ func _attach_weapon_model(id: String) -> void:
 	var grip_frac := 0.22 if str(w["class"]) == "pistol" else 0.34
 	# Grip point in model space (muzzle along -Z, model centred on its bounding box).
 	var grip := Vector3(0.0, -0.04, length * 0.5 - grip_frac * length)
-	var rot := Basis(Vector3.UP, -PI * 0.5) # model -Z -> socket +X
 	var holder := Node3D.new()
 	holder.name = "Weapon"
-	holder.transform = Transform3D(rot, Vector3(-0.03, -0.075, 0.0) - rot * grip)
+	if character:
+		# Realistic body: the socket sits in the right hand and already points along the aim (-Z).
+		holder.transform = Transform3D(Basis(), -grip)
+	else:
+		var rot := Basis(Vector3.UP, -PI * 0.5) # model -Z -> socket +X
+		holder.transform = Transform3D(rot, Vector3(-0.03, -0.075, 0.0) - rot * grip)
 	weapon_socket.add_child(holder)
 	var path := WeaponDB.model_path(id)
 	if ResourceLoader.exists(path):
@@ -262,7 +278,7 @@ func start_reload() -> void:
 	if not infinite_reserve and reserve_for_current() <= 0:
 		return
 	_reload_left = float(w["reload"])
-	_play_fx(Sfx.reload())
+	_play_fx(Sfx.reload_sound())
 
 
 func _finish_reload() -> void:
@@ -300,6 +316,15 @@ func process_weapon(delta: float) -> void:
 		_flash_mesh.visible = show
 		if show:
 			_flash_mesh.rotation.z = randf() * TAU
+
+
+## Drives the realistic body's animation from movement and weapon state.
+func update_animation(aiming: bool) -> void:
+	if character == null:
+		return
+	var horiz := Vector2(velocity.x, velocity.z).length()
+	var pistol := has_weapon() and str(weapon()["class"]) == "pistol"
+	character.set_state(horiz, has_weapon(), pistol, aiming, not is_on_floor() and absf(velocity.y) > 1.0)
 
 
 # --- Damage --------------------------------------------------------------------

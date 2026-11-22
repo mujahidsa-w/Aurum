@@ -38,8 +38,13 @@ func _on_quality_changed() -> void:
 
 
 func _apply_outfit() -> void:
-	world.character.set_outfit(GameState.outfit_index)
-	world.character.set_rifle_skin(GameState.rifle_skin_index)
+	var hero := world.character
+	if hero.has_method("apply_outfit"):
+		hero.call("apply_outfit", GameState.outfit_id)
+		world.hold_weapon(GameState.equipped_weapon)
+	else:
+		hero.call("set_outfit", GameState.outfit_index)
+		hero.call("set_rifle_skin", GameState.rifle_skin_index)
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -8,6 +8,8 @@ extends Control
 const Icons := preload("res://scripts/ui_icons.gd")
 const LobbyWorld := preload("res://scripts/lobby_world.gd")
 const CharacterModel := preload("res://scripts/character_model.gd")
+const CharacterDB := preload("res://scripts/game/character_db.gd")
+const WeaponDB := preload("res://scripts/game/weapon_db.gd")
 
 const BASE := Vector2(1920.0, 1080.0)
 const GOLD := Color(1.0, 0.78, 0.1)
@@ -334,7 +336,12 @@ func _make_portrait() -> void:
 	_portrait_cam.near = 0.05
 	vp.add_child(_portrait_cam)
 	_portrait_cam.current = true
-	_portrait_offset = Transform3D(Basis.IDENTITY, Vector3(0.0, 1.69, 0.95)).looking_at(Vector3(0.0, 1.645, 0.0), Vector3.UP)
+	var head := 1.645
+	var front := 0.95
+	if world and world.character and world.character.has_method("apply_outfit"):
+		head = float(world.character.get("head_height")) + 0.12
+		front = -0.95 # realistic models face their local -Z
+	_portrait_offset = Transform3D(Basis.IDENTITY, Vector3(0.0, head + 0.04, front)).looking_at(Vector3(0.0, head, 0.0), Vector3.UP)
 	_portrait_tex = vp.get_texture()
 	_update_portrait_camera()
 
@@ -868,7 +875,7 @@ func _on_cloud() -> void:
 
 func _on_emote() -> void:
 	if world and world.character:
-		world.character.play_emote()
+		world.character.call("play_emote")
 
 
 func _post_chat(sender: String, text: String) -> void:
@@ -1269,6 +1276,12 @@ func _open_settings() -> void:
 	fps_toggle.button_pressed = GameState.show_fps
 	fps_toggle.add_theme_font_size_override("font_size", 30)
 	fps_toggle.toggled.connect(_set_show_fps)
+	var account := _hbox(body, 16)
+	_action_button(account, "CHANGE CHARACTER", _change_character, false, 300)
+	_action_button(account, "SIGN OUT", _sign_out, false, 220)
+	var who := "Guest" if GameState.auth_provider != "google" else "Google: %s" % GameState.account_email
+	var who_label := _label(account, who, 24, TEXT_DIM, font_medium)
+	who_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var toggles := _hbox(body, 40)
 	toggles.add_child(fps_toggle)
 	if not (OS.has_feature("mobile") or OS.has_feature("web")):
@@ -1281,6 +1294,15 @@ func _open_settings() -> void:
 		toggles.add_child(fs)
 
 
+func _change_character() -> void:
+	get_tree().change_scene_to_file("res://scenes/onboarding.tscn")
+
+
+func _sign_out() -> void:
+	GameState.sign_out()
+	get_tree().change_scene_to_file("res://scenes/onboarding.tscn")
+
+
 func _set_show_fps(on: bool) -> void:
 	GameState.show_fps = on
 	_fps_label.visible = on
@@ -1288,24 +1310,90 @@ func _set_show_fps(on: bool) -> void:
 
 
 func _open_inventory() -> void:
-	var body := _open_modal("Inventory", 1080, 620)
-	_section(body, "OUTFIT ACCENT")
-	var row := _hbox(body, 16)
-	var outfit_buttons: Array[Button] = []
-	for o in CharacterModel.OUTFITS:
-		var c: Color = o["color"]
-		outfit_buttons.append(_swatch(row, c, Color(0.05, 0.05, 0.06), str(o["name"])))
-	_bind_choice(outfit_buttons, GameState.outfit_index, GameState.set_outfit)
-	_section(body, "RIFLE SKIN")
-	var row2 := _hbox(body, 16)
-	var skin_buttons: Array[Button] = []
-	for s in CharacterModel.RIFLE_SKINS:
-		var a: Color = s["a"]
-		var b: Color = s["b"]
-		skin_buttons.append(_swatch(row2, a, b, str(s["name"])))
-	_bind_choice(skin_buttons, GameState.rifle_skin_index, GameState.set_rifle_skin)
-	_label(body, "Tip: drag the character to rotate. Changes are saved automatically.", 26, TEXT_DIM, font_medium)
+	_open_inventory_tab("outfits")
 
+
+func _open_inventory_tab(tab: String) -> void:
+	var body := _open_modal("Inventory", 1280, 760)
+	var tabs := _hbox(body, 12)
+	for t in [["outfits", "OUTFITS"], ["characters", "CHARACTERS"], ["weapons", "WEAPONS"]]:
+		var tb := _action_button(tabs, str(t[1]), _open_inventory_tab.bind(str(t[0])), str(t[0]) == tab, 240)
+		tb.custom_minimum_size = Vector2(240, 56)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(0, 520)
+	body.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = 6 if tab != "weapons" else 4
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 14)
+	scroll.add_child(grid)
+	var cid := GameState.character_id if GameState.character_id != "" else "soldier"
+	match tab:
+		"outfits":
+			for o in CharacterDB.OUTFITS:
+				var oid := str(o["id"])
+				_item_card(grid, CharacterDB.thumb(cid, oid), str(o["name"]), oid == GameState.outfit_id, Vector2(180, 270), _equip_outfit.bind(oid))
+		"characters":
+			for c in CharacterDB.CHARACTERS:
+				var id := str(c["id"])
+				_item_card(grid, CharacterDB.thumb(id, "original"), str(c["name"]), id == GameState.character_id, Vector2(180, 270), _equip_character.bind(id))
+		"weapons":
+			for wid in WeaponDB.ids():
+				var w := WeaponDB.get_weapon(str(wid))
+				_item_card(grid, CharacterDB.weapon_thumb(str(wid)), "%s  ·  %s" % [str(w["name"]), str(w["ammo"])], str(wid) == GameState.equipped_weapon, Vector2(280, 170), _equip_weapon.bind(str(wid)))
+	_label(body, "Tap an item to equip it. Equipped items have a gold frame.", 24, TEXT_DIM, font_medium)
+
+
+func _item_card(parent: Control, image: String, title: String, equipped: bool, card_size: Vector2, action: Callable) -> void:
+	var card := Button.new()
+	card.focus_mode = Control.FOCUS_NONE
+	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	card.custom_minimum_size = card_size
+	for state in ["normal", "hover", "pressed"]:
+		var bg := Color(1, 1, 1, 0.14 if equipped else (0.1 if state == "hover" else 0.05))
+		card.add_theme_stylebox_override(state, _sb(bg, 10, GOLD if equipped else Color(1, 1, 1, 0.15), 4 if equipped else 1))
+	card.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	card.pressed.connect(action)
+	parent.add_child(card)
+	if ResourceLoader.exists(image):
+		var img := _texture_rect(card, load(image), TextureRect.STRETCH_KEEP_ASPECT_CENTERED)
+		img.position = Vector2(8, 6)
+		img.size = Vector2(card_size.x - 16, card_size.y - 52)
+	var l := _label(card, title, 24, Color.WHITE, font_bold)
+	l.position = Vector2(0, card_size.y - 44)
+	l.size = Vector2(card_size.x, 38)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.clip_text = true
+	if equipped:
+		var tag := _label(card, "EQUIPPED", 20, GOLD, font_heavy)
+		tag.position = Vector2(10, 6)
+
+
+func _equip_outfit(oid: String) -> void:
+	GameState.outfit_id = oid
+	GameState.save_state()
+	if world and world.character and world.character.has_method("apply_outfit"):
+		world.character.call("apply_outfit", oid)
+	toast("Equipped outfit: %s" % CharacterDB.outfit_name(oid))
+	_open_inventory_tab("outfits")
+
+
+func _equip_character(id: String) -> void:
+	GameState.character_id = id
+	GameState.save_state()
+	toast("Character changed - reloading lobby")
+	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+
+
+func _equip_weapon(wid: String) -> void:
+	GameState.equipped_weapon = wid
+	GameState.save_state()
+	if world:
+		world.hold_weapon(wid)
+	toast("Equipped: %s" % str(WeaponDB.get_weapon(wid)["name"]))
+	_open_inventory_tab("weapons")
 
 func _open_missions() -> void:
 	var body := _open_modal("Missions", 1040, 700)

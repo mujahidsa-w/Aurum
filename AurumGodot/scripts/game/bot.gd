@@ -88,6 +88,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	if face_dir != Vector3.ZERO:
 		visual.rotation.y = lerp_angle(visual.rotation.y, atan2(-face_dir.x, -face_dir.z), 8.0 * delta)
+	update_animation(_target != null)
 	# Unstick: if barely moving while trying to, jump and choose a new destination.
 	_stuck_t += delta
 	if _stuck_t > 1.5:

@@ -54,7 +54,7 @@ static func click() -> AudioStreamWAV:
 	return wav
 
 
-static func reload() -> AudioStreamWAV:
+static func reload_sound() -> AudioStreamWAV:
 	if _cache.has("reload"):
 		return _cache["reload"]
 	var fn := func(t: float, noise: float, _lp: float) -> float:

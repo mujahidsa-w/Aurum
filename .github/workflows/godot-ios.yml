@@ -36,6 +36,16 @@ jobs:
       - name: Smoke test - lobby
         run: timeout 300 ./godot --headless --path AurumGodot --quit-after 900 res://scenes/lobby.tscn 2>&1 | tee lobby.log || true
 
+      - name: Smoke test - first launch (boot -> onboarding)
+        run: timeout 300 ./godot --headless --path AurumGodot --quit-after 600 2>&1 | tee boot.log || true
+
+      - name: Smoke test - lobby with a realistic character chosen
+        run: |
+          d="$HOME/.local/share/godot/app_userdata/Aurum"
+          mkdir -p "$d"
+          printf '[account]\nauth_provider="guest"\n\n[player]\nname="Tester"\ncharacter_id="sophia"\noutfit_id="olive"\ntrained=true\nequipped_weapon="akm"\n' > "$d/aurum_save.cfg"
+          timeout 300 ./godot --headless --path AurumGodot --quit-after 900 res://scenes/lobby.tscn 2>&1 | tee lobby_realistic.log || true
+
       - name: Smoke test - training
         run: |
           if [ -f AurumGodot/scenes/training.tscn ]; then

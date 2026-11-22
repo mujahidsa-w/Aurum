@@ -13,6 +13,7 @@ const WeaponDB := preload("res://scripts/game/weapon_db.gd")
 const SoldierMesh := preload("res://scripts/game/soldier_mesh.gd")
 const Sfx := preload("res://scripts/game/sfx.gd")
 const CharacterModel := preload("res://scripts/character_model.gd")
+const CharacterDB := preload("res://scripts/game/character_db.gd")
 const MapData := preload("res://maps/vis/vis_map.gd")
 
 const BOT_COUNT := 23
@@ -95,8 +96,9 @@ func _bind(action: String, keys: Array) -> void:
 func _spawn_player() -> void:
 	player = PlayerScript.new()
 	player.name = "Player"
-	var outfit: Dictionary = CharacterModel.OUTFITS[clampi(GameState.outfit_index, 0, CharacterModel.OUTFITS.size() - 1)]
-	player.setup_body(outfit["color"], PlayerScript.LAYER_PLAYER)
+	var accent: Dictionary = CharacterModel.OUTFITS[clampi(GameState.outfit_index, 0, CharacterModel.OUTFITS.size() - 1)]
+	var cid := GameState.character_id if GameState.character_id != "" else "soldier"
+	player.setup_body(accent["color"], PlayerScript.LAYER_PLAYER, cid, GameState.outfit_id)
 	player.ballistics = ballistics
 	player.hud = hud
 	var drop := world.random_land_point(zone.center, 1800.0, 0.8)
@@ -114,7 +116,9 @@ func _spawn_bots() -> void:
 		var b := BotScript.new()
 		b.name = "Bot%d" % i
 		b.display_name = str(BOT_NAMES[i % BOT_NAMES.size()])
-		b.setup_body(Color.from_hsv(rng.randf(), 0.6, 0.7), BotScript.LAYER_BOT)
+		var bc: Dictionary = CharacterDB.CHARACTERS[rng.randi() % CharacterDB.CHARACTERS.size()]
+		var bo: Dictionary = CharacterDB.OUTFITS[rng.randi() % CharacterDB.OUTFITS.size()]
+		b.setup_body(Color.from_hsv(rng.randf(), 0.6, 0.7), BotScript.LAYER_BOT, str(bc["id"]), str(bo["id"]))
 		b.ballistics = ballistics
 		b.battle = self
 		b.skill = rng.randf_range(0.25, 0.8)

@@ -5,6 +5,9 @@ extends Node3D
 
 const MK := preload("res://scripts/mesh_kit.gd")
 const CharacterModel := preload("res://scripts/character_model.gd")
+const RealisticCharacter := preload("res://scripts/game/realistic_character.gd")
+const CharacterDB := preload("res://scripts/game/character_db.gd")
+const WeaponDB := preload("res://scripts/game/weapon_db.gd")
 
 const SKY_SHADER := """
 shader_type sky;
@@ -151,7 +154,9 @@ var camera_attributes: CameraAttributesPractical
 var sun: DirectionalLight3D
 var env: Environment
 var character_pivot: Node3D
-var character: CharacterModel
+## The lobby hero: a realistic character when one was chosen, else the stylised soldier.
+var character: Node3D
+var _held_weapon: Node3D
 
 var _grass_mm: MultiMesh
 var _grass_total := 0
@@ -919,6 +924,41 @@ func _build_character() -> void:
 	character_pivot = Node3D.new()
 	character_pivot.name = "CharacterPivot"
 	add_child(character_pivot)
+	if GameState.character_id != "" and CharacterDB.exists(GameState.character_id):
+		var rc := RealisticCharacter.new()
+		rc.name = "Hero"
+		character_pivot.add_child(rc)
+		if rc.setup(GameState.character_id, GameState.outfit_id):
+			rc.rotation.y = PI # face the lobby camera
+			character = rc
+			hold_weapon(GameState.equipped_weapon)
+			return
+		rc.queue_free()
 	character = CharacterModel.new()
 	character.name = "Hero"
 	character_pivot.add_child(character)
+
+
+## Puts the equipped weapon in the realistic hero's hands.
+func hold_weapon(id: String) -> void:
+	var rc := character as RealisticCharacter
+	if rc == null:
+		return
+	if _held_weapon:
+		_held_weapon.queue_free()
+		_held_weapon = null
+	var path := WeaponDB.model_path(id)
+	if id == "" or not ResourceLoader.exists(path):
+		rc.set_state(0.0, false, false, false, false)
+		return
+	var w := WeaponDB.get_weapon(id)
+	var length := float(w["length"])
+	var pistol := str(w["class"]) == "pistol"
+	var grip_frac := 0.22 if pistol else 0.34
+	_held_weapon = Node3D.new()
+	_held_weapon.transform = Transform3D(Basis(), -Vector3(0.0, -0.04, length * 0.5 - grip_frac * length))
+	rc.weapon_socket.add_child(_held_weapon)
+	var scene := load(path) as PackedScene
+	if scene:
+		_held_weapon.add_child(scene.instantiate())
+	rc.set_state(0.0, true, pistol, false, false)

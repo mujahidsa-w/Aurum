@@ -43,6 +43,22 @@ Buildings and roads: © OpenStreetMap contributors, ODbL 1.0 - https://www.opens
 
 Wooden ammo crate (`models/wooden_crate_1.fbx`) - provided by the project owner.
 
+## Characters (Sketchfab, CC BY 4.0)
+
+Animations were retargeted from the soldier rig to the scanned characters; textures resized; outfit colour
+variants generated from the original textures.
+
+| In game | Model | Author | Source |
+|---|---|---|---|
+| Nathan | Nathan Animated 003 - Walking 3D Man | Renderpeople | https://sketchfab.com/3d-models/nathan-animated-003-walking-3d-man-143a2b1ea5eb4385ae90a73657aca3bc |
+| Eric | Eric Rigged 001 - Rigged 3D Business Man | Renderpeople | https://sketchfab.com/3d-models/eric-rigged-001-rigged-3d-business-man-a46bc9f67aaa415bb4f3241eef900e7f |
+| Sophia | Sophia Animated 003 - Animated 3D Woman | Renderpeople | https://sketchfab.com/3d-models/sophia-animated-003-animated-3d-woman-dc448c3be0e74f96a55fb475a13433cf |
+| Carla | Carla Rigged 001 - Rigged 3D Business Woman | Renderpeople | https://sketchfab.com/3d-models/carla-rigged-001-rigged-3d-business-woman-acf520f450d14dd799f98a6fede3edf5 |
+| Claudia | Claudia Rigged 002 - 3D Rigged Business Woman | Renderpeople | https://sketchfab.com/3d-models/claudia-rigged-002-3d-rigged-business-woman-c659bd0accab47c6bbe390cf822a2b92 |
+| Ranger + all animations | Game Ready Military Character | Pure Gamer Studios | https://sketchfab.com/3d-models/game-ready-military-character-8cd04f8d8ca94f7fb911fef2d3802f13 |
+
+License: https://creativecommons.org/licenses/by/4.0/
+
 ## Fonts
 
 Barlow Condensed - SIL Open Font License 1.1 (`fonts/OFL.txt`).

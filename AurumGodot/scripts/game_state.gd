@@ -61,6 +61,14 @@ var installed_packs: Array = []
 var workshop_notify := false
 var season_claimed := false
 var fullscreen := true
+# Account / onboarding
+var auth_provider := ""      # "google" or "guest"; empty = not signed in yet
+var account_email := ""
+var account_name := ""
+var character_id := ""       # chosen realistic character (see character_db.gd)
+var outfit_id := "original"
+var trained := false
+var equipped_weapon := "m4a1"
 
 const SQUAD_SLOTS := 3
 
@@ -253,6 +261,19 @@ func apply_window_mode() -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 
 
+## Player names: 3-14 letters, English (A-Z) or Arabic only - no digits, spaces or symbols.
+static func is_valid_name(text: String) -> bool:
+	var re := RegEx.create_from_string("^[A-Za-z\\x{0621}-\\x{063A}\\x{0641}-\\x{064A}]{3,14}$")
+	return re.search(text) != null
+
+
+func sign_out() -> void:
+	auth_provider = ""
+	account_email = ""
+	account_name = ""
+	save_state()
+
+
 # --- Persistence ----------------------------------------------------------
 
 func save_state() -> void:
@@ -276,6 +297,14 @@ func save_state() -> void:
 	cfg.set_value("settings", "workshop_notify", workshop_notify)
 	cfg.set_value("settings", "fullscreen", fullscreen)
 	cfg.set_value("player", "season_claimed", season_claimed)
+	cfg.set_value("account", "auth_provider", auth_provider)
+	cfg.set_value("account", "account_email", account_email)
+	cfg.set_value("account", "account_name", account_name)
+	cfg.set_value("player", "name", player_name)
+	cfg.set_value("player", "character_id", character_id)
+	cfg.set_value("player", "outfit_id", outfit_id)
+	cfg.set_value("player", "trained", trained)
+	cfg.set_value("player", "equipped_weapon", equipped_weapon)
 	var claimed: Array = []
 	for m in missions:
 		claimed.append(bool(m["claimed"]))
@@ -306,6 +335,14 @@ func load_state() -> void:
 	workshop_notify = bool(cfg.get_value("settings", "workshop_notify", workshop_notify))
 	fullscreen = bool(cfg.get_value("settings", "fullscreen", fullscreen))
 	season_claimed = bool(cfg.get_value("player", "season_claimed", season_claimed))
+	auth_provider = str(cfg.get_value("account", "auth_provider", auth_provider))
+	account_email = str(cfg.get_value("account", "account_email", account_email))
+	account_name = str(cfg.get_value("account", "account_name", account_name))
+	player_name = str(cfg.get_value("player", "name", player_name))
+	character_id = str(cfg.get_value("player", "character_id", character_id))
+	outfit_id = str(cfg.get_value("player", "outfit_id", outfit_id))
+	trained = bool(cfg.get_value("player", "trained", trained))
+	equipped_weapon = str(cfg.get_value("player", "equipped_weapon", equipped_weapon))
 	var claimed: Array = cfg.get_value("missions", "claimed", [])
 	for i in mini(claimed.size(), missions.size()):
 		missions[i]["claimed"] = bool(claimed[i])
