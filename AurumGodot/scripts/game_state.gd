@@ -24,7 +24,7 @@ const REGIONS := [
 ]
 const MODES := ["Classic", "Arcade", "Arena"]
 const MAPS := [
-	{"name": "Solara", "info": "8x8 km  ·  Island", "color": Color(0.27, 0.52, 0.33)},
+	{"name": "Vis Island", "info": "18x9 km  ·  Croatia (real)", "color": Color(0.27, 0.52, 0.33)},
 	{"name": "Dunewatch", "info": "8x8 km  ·  Desert", "color": Color(0.74, 0.55, 0.29)},
 	{"name": "Frostline", "info": "6x6 km  ·  Snow", "color": Color(0.52, 0.66, 0.8)},
 	{"name": "Verdant", "info": "4x4 km  ·  Jungle", "color": Color(0.16, 0.42, 0.26)},

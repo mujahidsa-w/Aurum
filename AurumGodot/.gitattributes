@@ -2,3 +2,7 @@
 *.fbx -filter -diff -merge binary
 *.png -filter -diff -merge binary
 *.ttf binary
+*.jpg -filter -diff -merge binary
+*.glb -filter -diff -merge binary
+*.hdr -filter -diff -merge binary
+*.webp -filter -diff -merge binary

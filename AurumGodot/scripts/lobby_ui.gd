@@ -939,7 +939,7 @@ func _on_match_found() -> void:
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(holder)
 	var bar := _progress(holder, 0.0, 760, 14)
-	var status := _label(box, "Loading %s..." % GameState.map_name(), 28, TEXT_DIM, font_medium)
+	var status := _label(box, "Deploying to Vis Island, Croatia...", 28, TEXT_DIM, font_medium)
 	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.modulate.a = 0.0
 	var tw := create_tween()
@@ -952,11 +952,8 @@ func _on_match_found() -> void:
 
 
 func _finish_match() -> void:
-	if _overlay and is_instance_valid(_overlay):
-		_overlay.queue_free()
-	_overlay = null
-	_stop_matching()
-	toast("The %s battleground is the next build step - back to the lobby" % GameState.map_name())
+	# Load the real battleground (Vis Island).
+	get_tree().change_scene_to_file("res://scenes/battleground.tscn")
 
 
 # =============================================================================

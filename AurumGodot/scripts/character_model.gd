@@ -28,6 +28,11 @@ const HAND_R := Vector3(-0.085, 1.06, 0.215)
 const UPPER_ARM := 0.27
 const FOREARM := 0.27
 
+## When false the procedural rifle is not built (the game attaches real weapon models instead).
+var show_rifle := true
+## Transform (in character space) of a weapon held in both hands; +X = muzzle direction.
+var weapon_transform := Transform3D.IDENTITY
+
 var accent_mat: StandardMaterial3D
 var camo_mat: StandardMaterial3D
 var camo_tex: NoiseTexture2D
@@ -226,11 +231,13 @@ func _build_arms_and_rifle() -> void:
 	var rifle_origin := HAND_R - rifle_basis * grip_local
 	var hand_l := rifle_origin + rifle_basis * support_local
 
-	var rifle := Node3D.new()
-	rifle.name = "Rifle"
-	rifle.transform = Transform3D(rifle_basis, rifle_origin)
-	u.add_child(rifle)
-	_build_rifle(rifle)
+	weapon_transform = Transform3D(rifle_basis, rifle_origin)
+	if show_rifle:
+		var rifle := Node3D.new()
+		rifle.name = "Rifle"
+		rifle.transform = weapon_transform
+		u.add_child(rifle)
+		_build_rifle(rifle)
 
 	_build_arm(SHOULDER_R, HAND_R, Vector3(-1.0, -0.35, -0.55), -1.0)
 	_build_arm(SHOULDER_L, hand_l, Vector3(1.0, -0.6, -0.2), 1.0)
