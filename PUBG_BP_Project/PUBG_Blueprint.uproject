@@ -52,6 +52,16 @@
 			"Name": "RadAudioCodec",
 			"Enabled": true,
 			"Optional": true
+		},
+		{
+			"Name": "AndroidDeviceProfileSelector",
+			"Enabled": true,
+			"Optional": true
+		},
+		{
+			"Name": "AndroidPermission",
+			"Enabled": true,
+			"Optional": true
 		}
 	],
 	"DisableEnginePluginsByDefault": true

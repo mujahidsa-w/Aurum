@@ -1,0 +1,137 @@
+# Builds the game for Android with Unreal Engine 5 on GitHub's Linux runners and
+# produces an APK (artifact "AurumMobile-Android-<config>"), signed with a debug
+# key so it installs directly on a phone.
+#
+# A UE5 build is longer than one 6-hour GitHub job, so it runs as a chain of
+# stages: each stage continues where the previous one stopped, and the chain
+# ends as soon as the APK exists.
+# Needs the EPIC_GITHUB_TOKEN secret (GitHub token with access to EpicGames/UnrealEngine).
+name: Android Build (UE5, APK)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ue_ref:
+        description: "Unreal Engine branch or tag (EpicGames/UnrealEngine)"
+        type: string
+        default: "5.8"
+      config:
+        description: "Game configuration"
+        type: choice
+        options: [Development, Shipping]
+        default: Development
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve engine version
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.ref.outputs.sha }}
+    steps:
+      - id: ref
+        env:
+          TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
+          REF: ${{ inputs.ue_ref }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::error::Secret EPIC_GITHUB_TOKEN is missing."; exit 1; fi
+          if echo "$REF" | grep -qE '^[0-9a-f]{40}$'; then SHA=$REF; else
+            SHA=$(git ls-remote "https://x-access-token:${TOKEN}@github.com/EpicGames/UnrealEngine.git" \
+                  "refs/heads/$REF" "refs/tags/$REF^{}" "refs/tags/$REF" | head -1 | cut -f1)
+          fi
+          if [ -z "$SHA" ]; then echo "::error::Unreal Engine ref '$REF' not found (or no access with EPIC_GITHUB_TOKEN)."; exit 1; fi
+          echo "Unreal Engine $REF = $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  s1:
+    name: Stage 1
+    needs: [prepare]
+    uses: ./.github/workflows/android-stage.yml
+    secrets: inherit
+    with:
+      stage: 1
+      prev_state: ''
+      ue_sha: ${{ needs.prepare.outputs.sha }}
+      config: ${{ inputs.config }}
+
+  s2:
+    name: Stage 2
+    needs: [prepare, s1]
+    if: ${{ !cancelled() && needs.s1.result == 'success' && needs.s1.outputs.done != 'true' }}
+    uses: ./.github/workflows/android-stage.yml
+    secrets: inherit
+    with:
+      stage: 2
+      prev_state: android-state-1
+      ue_sha: ${{ needs.prepare.outputs.sha }}
+      config: ${{ inputs.config }}
+
+  s3:
+    name: Stage 3
+    needs: [prepare, s2]
+    if: ${{ !cancelled() && needs.s2.result == 'success' && needs.s2.outputs.done != 'true' }}
+    uses: ./.github/workflows/android-stage.yml
+    secrets: inherit
+    with:
+      stage: 3
+      prev_state: android-state-2
+      ue_sha: ${{ needs.prepare.outputs.sha }}
+      config: ${{ inputs.config }}
+
+  s4:
+    name: Stage 4
+    needs: [prepare, s3]
+    if: ${{ !cancelled() && needs.s3.result == 'success' && needs.s3.outputs.done != 'true' }}
+    uses: ./.github/workflows/android-stage.yml
+    secrets: inherit
+    with:
+      stage: 4
+      prev_state: android-state-3
+      ue_sha: ${{ needs.prepare.outputs.sha }}
+      config: ${{ inputs.config }}
+
+  s5:
+    name: Stage 5
+    needs: [prepare, s4]
+    if: ${{ !cancelled() && needs.s4.result == 'success' && needs.s4.outputs.done != 'true' }}
+    uses: ./.github/workflows/android-stage.yml
+    secrets: inherit
+    with:
+      stage: 5
+      prev_state: android-state-4
+      ue_sha: ${{ needs.prepare.outputs.sha }}
+      config: ${{ inputs.config }}
+
+  s6:
+    name: Stage 6
+    needs: [prepare, s5]
+    if: ${{ !cancelled() && needs.s5.result == 'success' && needs.s5.outputs.done != 'true' }}
+    uses: ./.github/workflows/android-stage.yml
+    secrets: inherit
+    with:
+      stage: 6
+      prev_state: android-state-5
+      ue_sha: ${{ needs.prepare.outputs.sha }}
+      config: ${{ inputs.config }}
+
+  result:
+    name: Result
+    needs: [s1, s2, s3, s4, s5, s6]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          DONE: ${{ needs.s1.outputs.done == 'true' || needs.s2.outputs.done == 'true' || needs.s3.outputs.done == 'true' || needs.s4.outputs.done == 'true' || needs.s5.outputs.done == 'true' || needs.s6.outputs.done == 'true' }}
+        run: |
+          if [ "$DONE" = "true" ]; then
+            echo "The APK is in this run's artifacts: AurumMobile-Android-${{ inputs.config }}"
+          else
+            echo "::error::No APK was produced. Open the failed stage and the android-logs-stage-N artifact."
+            exit 1
+          fi

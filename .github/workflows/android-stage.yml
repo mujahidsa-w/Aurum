@@ -1,0 +1,189 @@
+# One stage of the Android build (called by android-build.yml). A full UE5 build
+# does not fit in one 6-hour GitHub job, so each stage continues from the files
+# the previous stage saved; the last one produces the APK.
+name: Android build stage
+
+on:
+  workflow_call:
+    inputs:
+      stage: { type: number, required: true }
+      prev_state: { type: string, required: false, default: "" }
+      ue_sha: { type: string, required: true }
+      config: { type: string, required: true }
+    outputs:
+      done:
+        description: "true when the APK was produced"
+        value: ${{ jobs.build.outputs.done }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Stage ${{ inputs.stage }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    outputs:
+      done: ${{ steps.stage.outputs.done }}
+    env:
+      UE: /home/runner/UE
+      PROJ_DIR: ${{ github.workspace }}/PUBG_BP_Project
+      UPROJECT: ${{ github.workspace }}/PUBG_BP_Project/PUBG_Blueprint.uproject
+      CONFIG: ${{ inputs.config }}
+      JOB_MINUTES: "350"
+      RESERVE_MINUTES: "40"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      SETUP_EXCLUDES: --exclude=Win32 --exclude=Win64 --exclude=WinArm64 --exclude=Mac --exclude=MacOS --exclude=IOS --exclude=TVOS --exclude=HoloLens --exclude=LinuxArm64 --exclude=LinuxAArch64
+
+    steps:
+      - name: Start, free disk space
+        run: |
+          echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+          echo "OUT_DIR=$RUNNER_TEMP/apk" >> "$GITHUB_ENV"
+          nproc; free -g; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /usr/local/lib/node_modules \
+            /opt/hostedtoolcache/CodeQL /usr/share/swift /usr/local/share/powershell /opt/microsoft || true
+          sudo rm -rf "$ANDROID_HOME/emulator" "$ANDROID_HOME/system-images" || true
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          sudo swapoff -a || true; sudo rm -f /swapfile /mnt/swapfile || true
+          sudo fallocate -l 8G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile || true
+          free -g; df -h /
+
+      - name: Checkout Aurum (game files are fetched later, only for cooking)
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Get Unreal Engine source (${{ inputs.ue_sha }})
+        env:
+          TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
+          UE_SHA: ${{ inputs.ue_sha }}
+        run: |
+          mkdir -p "$UE" && cd "$UE"
+          git init -q
+          git remote add origin https://github.com/EpicGames/UnrealEngine.git
+          AUTH=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          for i in 1 2 3; do
+            git -c http.extraheader="AUTHORIZATION: basic $AUTH" fetch -q --depth 1 --no-tags origin "$UE_SHA" && break
+            echo "fetch failed, retrying in 30 s"; sleep 30
+          done
+          git checkout -q FETCH_HEAD
+          git log -1 --format='%H %cd %s'
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK + NDK for this engine
+        run: |
+          MAJOR=$(python3 .github/android/ndk_major.py "$UE")
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          NDK=$("$SDKM" --list 2>/dev/null | grep -oE "ndk;$MAJOR\.[0-9.]+" | sort -t. -k2,2n -k3,3n | tail -1)
+          [ -n "$NDK" ] || { echo "::error::No NDK $MAJOR.x available in sdkmanager"; exit 1; }
+          echo "Installing $NDK"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" --install "$NDK" "platform-tools" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          NDKROOT="$ANDROID_HOME/${NDK/;//}"
+          ls "$NDKROOT" | head
+          {
+            echo "ANDROID_SDK_ROOT=$ANDROID_HOME"
+            echo "NDKROOT=$NDKROOT"
+            echo "NDK_ROOT=$NDKROOT"
+            echo "ANDROID_NDK_ROOT=$NDKROOT"
+          } >> "$GITHUB_ENV"
+
+      - name: Download engine dependencies (Linux + Android only)
+        run: |
+          cd "$UE"
+          for i in 1 2 3; do
+            ./Setup.sh $SETUP_EXCLUDES < /dev/null && break
+            [ "$i" -eq 3 ] && { echo "::error::Setup.sh failed 3 times"; exit 1; }
+            echo "Setup attempt $i failed, retrying..."; sleep 30
+          done
+          rm -rf .git/ue-gitdeps   # download cache only; frees disk space
+          df -h /
+
+      - name: Build UnrealBuildTool, configure it for this runner
+        run: |
+          cd "$UE"
+          ./GenerateProjectFiles.sh
+          python3 "$GITHUB_WORKSPACE/.github/ios/ubt_config.py" "$UE" 4
+
+      - name: Download the previous stage's build state
+        if: inputs.prev_state != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.prev_state }}
+          path: ${{ runner.temp }}/state
+
+      - name: Restore the previous stage's build state
+        if: inputs.prev_state != ''
+        run: |
+          zstd -d -T0 -c "$RUNNER_TEMP/state/state.tar.zst" | tar -xf - -C /
+          rm -rf "$RUNNER_TEMP/state"
+          # The engine was cloned fresh (new file times): give every restored build
+          # product one common, newer time so the build continues instead of restarting.
+          touch "$RUNNER_TEMP/stamp"
+          for d in "$UE/Engine/Binaries/Linux" "$UE/Engine/Binaries/Android" "$UE/Engine/Intermediate" \
+                   "$PROJ_DIR/Binaries" "$PROJ_DIR/Intermediate" "$PROJ_DIR/Saved"; do
+            [ -e "$d" ] && find "$d" -exec touch -h -r "$RUNNER_TEMP/stamp" {} +
+          done
+          find "$UE/Engine/Plugins" -type d \( -name Intermediate -o -path '*/Binaries/Linux' -o -path '*/Binaries/Android' \) -prune \
+            | while IFS= read -r d; do find "$d" -exec touch -h -r "$RUNNER_TEMP/stamp" {} +; done
+          ls "$PROJ_DIR/Saved/CI" || true
+          df -h /
+
+      - name: Build (continues the previous stage)
+        id: stage
+        run: .github/android/stage.sh
+
+      - name: Upload the APK
+        if: steps.stage.outputs.done == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AurumMobile-Android-${{ inputs.config }}
+          path: ${{ env.OUT_DIR }}/*.apk
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Save build state for the next stage
+        if: success() && steps.stage.outputs.done != 'true'
+        run: |
+          cd /
+          P=()
+          for d in "$UE/Engine/Binaries/Linux" "$UE/Engine/Binaries/Android" "$UE/Engine/Intermediate" \
+                   "$PROJ_DIR/Binaries" "$PROJ_DIR/Intermediate" "$PROJ_DIR/Saved"; do
+            [ -e "$d" ] && P+=("${d#/}")
+          done
+          while IFS= read -r d; do P+=("${d#/}"); done < <(find "$UE/Engine/Plugins" -type d \
+            \( -name Intermediate -o -path '*/Binaries/Linux' -o -path '*/Binaries/Android' \) -prune)
+          mkdir -p "$RUNNER_TEMP/save"
+          tar -cf - --exclude '*/Saved/Logs' --exclude '*/Intermediate/ProjectFiles' "${P[@]}" \
+            | zstd -T0 -3 -q -o "$RUNNER_TEMP/save/state.tar.zst"
+          ls -lh "$RUNNER_TEMP/save/state.tar.zst"; df -h /
+
+      - name: Upload build state
+        if: success() && steps.stage.outputs.done != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-state-${{ inputs.stage }}
+          path: ${{ runner.temp }}/save/state.tar.zst
+          compression-level: 0
+          retention-days: 3
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-logs-stage-${{ inputs.stage }}
+          path: |
+            ${{ runner.temp }}/logs
+            /home/runner/UE/Engine/Programs/UnrealBuildTool/Log*.txt
+            /home/runner/Library/Logs/Unreal Engine/LocalBuildLogs
+            /home/runner/UE/Engine/Programs/AutomationTool/Saved/Logs
+          if-no-files-found: ignore
+          retention-days: 14

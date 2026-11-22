@@ -21,6 +21,7 @@ An Unreal Engine 4 battle royale prototype focused on gameplay systems built wit
 > | [02-Architecture](Docs/02-Architecture.md) | how the new layer works, authority model |
 > | [03-Build-And-Run](Docs/03-Build-And-Run.md) | assets, build, editor tests, Android, iOS, dedicated server, room service |
 > | [06-iOS-Build](Docs/06-iOS-Build.md) | unsigned iPhone .ipa from GitHub Actions (no Mac, no Apple account) |
+> | [07-Android-Build](Docs/07-Android-Build.md) | Android APK from GitHub Actions (Linux runners, UE5 from source) |
 > | [04-Editor-Integration](Docs/04-Editor-Integration.md) | what works automatically, optional Blueprint refactors |
 > | [05-Testing-Report](Docs/05-Testing-Report.md) | what was tested and what still needs testing in Unreal |
 >
