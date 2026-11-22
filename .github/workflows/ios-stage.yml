@@ -66,6 +66,11 @@ jobs:
         with:
           lfs: false
 
+      - name: Disk check (fresh runner)
+        run: |
+          .github/ios/disk_check.sh "$VOL" "fresh, build volume"
+          .github/ios/disk_check.sh "$HOME" "fresh, system disk"
+
       - name: Copy the project onto the build volume
         run: |
           mkdir -p "$VOL/Aurum"
@@ -88,15 +93,11 @@ jobs:
           git checkout -q FETCH_HEAD
           git log -1 --format='%H %cd %s'
 
-      - name: Select Xcode for this engine, free disk space
+      - name: Select Xcode for this engine
         run: |
           XCODE=$(python3 .github/ios/select_xcode.py "$UE")
           echo "Selected: $XCODE"
           sudo xcode-select -s "$XCODE/Contents/Developer"
-          for X in /Applications/Xcode*.app; do
-            R=$(cd "$X" 2>/dev/null && pwd -P || echo none)
-            [ "$R" = "$XCODE" ] || sudo rm -rf "$X" || true
-          done
           sudo xcodebuild -license accept || true
           sudo xcodebuild -runFirstLaunch || true
           xcodebuild -version
@@ -104,9 +105,6 @@ jobs:
           # Xcode 26+ ships the Metal shader compiler as a separate download.
           xcrun -f metal >/dev/null 2>&1 || xcodebuild -downloadComponent MetalToolchain || sudo xcodebuild -downloadComponent MetalToolchain
           xcrun metal --version
-          xcrun simctl delete all || true
-          sudo xcrun simctl runtime delete all || true
-          sudo rm -rf ~/Library/Android /usr/local/lib/android ~/.ghcup || true
           command -v zstd >/dev/null || brew install zstd
           sudo mdutil -a -i off || true   # no Spotlight indexing of 100+ GB of build files
           df -h /
@@ -126,6 +124,7 @@ jobs:
       # from Microsoft's official installer and check that it runs.
       - name: Replace the bundled .NET SDK with an official install
         run: |
+          "$GITHUB_WORKSPACE/.github/ios/disk_check.sh" "$VOL" "after Setup.sh"
           DN=$(ls -d "$UE"/Engine/Binaries/ThirdParty/DotNet/*/mac-arm64 | head -1)
           CHANNEL=$(basename "$(dirname "$DN")")
           VER=$(python3 - "$UE" <<'PY2'
