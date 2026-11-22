@@ -1,0 +1,116 @@
+name: Aurum Godot - validate + unsigned iOS IPA
+
+on:
+  push:
+    branches: ["claude/**", "main", "master"]
+    paths: ["AurumGodot/**", ".github/workflows/godot-ios.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_RELEASE: "stable"
+
+jobs:
+  validate:
+    name: Run the game headless (script error check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot (official build)
+        run: |
+          base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64 godot
+          chmod +x godot
+          ./godot --version
+
+      - name: Import project
+        run: ./godot --headless --path AurumGodot --import 2>&1 | tee import.log
+
+      - name: Smoke test - lobby
+        run: timeout 300 ./godot --headless --path AurumGodot --quit-after 900 res://scenes/lobby.tscn 2>&1 | tee lobby.log || true
+
+      - name: Smoke test - training
+        run: |
+          if [ -f AurumGodot/scenes/training.tscn ]; then
+            timeout 600 ./godot --headless --path AurumGodot --quit-after 3000 res://scenes/training.tscn 2>&1 | tee training.log || true
+          fi
+
+      - name: Smoke test - battleground
+        run: timeout 900 ./godot --headless --path AurumGodot --quit-after 5000 res://scenes/battleground.tscn 2>&1 | tee battle.log || true
+
+      - name: Report errors
+        run: |
+          grep -nE "SCRIPT ERROR|Parse Error|Invalid call|Invalid access|Invalid assignment|Cannot call|Nonexistent|Failed to load|ERROR:" *.log | grep -v "DummyRasterizer\|Dummy" | head -300 > errors.txt || true
+          echo "==== errors ($(wc -l < errors.txt)) ===="
+          cat errors.txt
+          if grep -qE "SCRIPT ERROR|Parse Error" errors.txt; then exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: godot-logs
+          path: |
+            *.log
+            errors.txt
+
+  ios:
+    name: Build unsigned IPA
+    needs: validate
+    if: always()
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot + export templates (official builds)
+        run: |
+          base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_macos.universal.zip"
+          unzip -q godot.zip
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
+          tdir="$HOME/Library/Application Support/Godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}"
+          mkdir -p "$tdir"
+          unzip -q templates.tpz -d tpl
+          mv tpl/templates/* "$tdir/"
+          echo "GODOT=$PWD/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Import project
+        run: '"$GODOT" --headless --path AurumGodot --import'
+
+      - name: Export Xcode project
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/build/ios"
+          "$GODOT" --headless --path AurumGodot --export-release "iOS" "$GITHUB_WORKSPACE/build/ios/Aurum.ipa" 2>&1 | tee export.log
+          ls -la "$GITHUB_WORKSPACE/build/ios"
+
+      - name: Build app (no code signing)
+        run: |
+          cd "$GITHUB_WORKSPACE/build/ios"
+          xcodebuild -project Aurum.xcodeproj -scheme Aurum -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$PWD/Aurum.xcarchive" archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+            | tail -80
+
+      - name: Package unsigned IPA
+        run: |
+          cd "$GITHUB_WORKSPACE/build/ios"
+          APP=$(ls -d Aurum.xcarchive/Products/Applications/*.app | head -1)
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry Aurum-unsigned.ipa Payload
+          ls -la Aurum-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aurum-unsigned-ipa
+          path: build/ios/Aurum-unsigned.ipa
+          retention-days: 14
