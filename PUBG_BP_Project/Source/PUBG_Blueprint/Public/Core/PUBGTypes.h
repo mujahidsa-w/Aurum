@@ -195,12 +195,12 @@ struct FPUBGCharacterPreset
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character") FText DisplayName;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character") FLinearColor UIColor = FLinearColor::White;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "SkeletalMesh")) FSoftObjectPath Hair;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "SkeletalMesh")) FSoftObjectPath ClothTop;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "SkeletalMesh")) FSoftObjectPath ClothBottom;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "SkeletalMesh")) FSoftObjectPath Shoes;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "/Script/Engine.SkeletalMesh")) FSoftObjectPath Hair;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "/Script/Engine.SkeletalMesh")) FSoftObjectPath ClothTop;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "/Script/Engine.SkeletalMesh")) FSoftObjectPath ClothBottom;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "/Script/Engine.SkeletalMesh")) FSoftObjectPath Shoes;
 	/** One-piece outfit (E_FashionType::Whole). When set, Top/Bottom are hidden. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "SkeletalMesh")) FSoftObjectPath Whole;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "PUBG|Character", meta = (AllowedClasses = "/Script/Engine.SkeletalMesh")) FSoftObjectPath Whole;
 };
 
 /** Saved position of one touch control (normalized to the safe area). */

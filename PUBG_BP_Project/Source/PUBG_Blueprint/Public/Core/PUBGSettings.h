@@ -115,20 +115,20 @@ public:
 
 	// ---------------------------------------------------------------- Blueprint integration
 	UPROPERTY(config, EditAnywhere, Category = "Blueprint Integration") FPUBGBlueprintNames BlueprintNames;
-	UPROPERTY(config, EditAnywhere, Category = "Blueprint Integration", meta = (MetaClass = "Actor")) FSoftClassPath PickupBaseClass;
+	UPROPERTY(config, EditAnywhere, Category = "Blueprint Integration", meta = (MetaClass = "/Script/Engine.Actor")) FSoftClassPath PickupBaseClass;
 	/** Pickup class to spawn when a dropped item must be re-created on the server, indexed by E_ItemType. */
-	UPROPERTY(config, EditAnywhere, Category = "Blueprint Integration", meta = (MetaClass = "Actor")) TArray<FSoftClassPath> PickupClassesByItemType;
-	UPROPERTY(config, EditAnywhere, Category = "Blueprint Integration", meta = (MetaClass = "Actor")) FSoftClassPath ImpactDecalClass;
+	UPROPERTY(config, EditAnywhere, Category = "Blueprint Integration", meta = (MetaClass = "/Script/Engine.Actor")) TArray<FSoftClassPath> PickupClassesByItemType;
+	UPROPERTY(config, EditAnywhere, Category = "Blueprint Integration", meta = (MetaClass = "/Script/Engine.Actor")) FSoftClassPath ImpactDecalClass;
 	/** MyCharacter bools copied from each player to everybody (drives MyAnimeBlueprint). Max 32. */
 	UPROPERTY(config, EditAnywhere, Category = "Blueprint Integration") TArray<FName> MirroredBoolVariables;
 
-	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "DataTable")) FSoftObjectPath WeaponTable;
-	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "DataTable")) FSoftObjectPath HealthTable;
-	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "DataTable")) FSoftObjectPath BoostTable;
-	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "DataTable")) FSoftObjectPath EquipmentTable;
-	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "DataTable")) FSoftObjectPath AmmoTable;
-	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "DataTable")) FSoftObjectPath FashionTable;
-	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "DataTable")) FSoftObjectPath WeaponAccTable;
+	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "/Script/Engine.DataTable")) FSoftObjectPath WeaponTable;
+	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "/Script/Engine.DataTable")) FSoftObjectPath HealthTable;
+	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "/Script/Engine.DataTable")) FSoftObjectPath BoostTable;
+	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "/Script/Engine.DataTable")) FSoftObjectPath EquipmentTable;
+	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "/Script/Engine.DataTable")) FSoftObjectPath AmmoTable;
+	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "/Script/Engine.DataTable")) FSoftObjectPath FashionTable;
+	UPROPERTY(config, EditAnywhere, Category = "Data Tables", meta = (AllowedClasses = "/Script/Engine.DataTable")) FSoftObjectPath WeaponAccTable;
 
 	// ---------------------------------------------------------------- Authority / anti-cheat
 	/**

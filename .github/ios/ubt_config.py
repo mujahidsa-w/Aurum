@@ -25,7 +25,7 @@ def declared(category, name):
 wanted = {
     "BuildConfiguration": {
         "MaxParallelActions": jobs,       # 7 GB RAM runner: more clang jobs = swap stall
-        "bDisableDebugInfo": "true",      # faster compile/link, much smaller state archive
+        "bDisableDebugInfo": "true",      # faster compile/link, much smaller state archive (deprecated, still honored)
         "bAllowUBAExecutor": "false",     # plain local executor: predictable stop/resume
         "bAllowUBALocalExecutor": "false",
         "bAllowXGE": "false",

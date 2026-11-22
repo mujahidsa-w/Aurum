@@ -30,6 +30,23 @@ run() { # run <log-name> <cmd...>; stops the stage (exit 0) when time is up
 
 # 1) Editor + tools (needed to cook the content). Mac only, Development.
 if [ ! -f "$MARK/editor.done" ]; then
+  # Compile only the game module first: errors in our C++ show up in minutes
+  # instead of after hours of engine compiling.
+  if [ ! -f "$MARK/module.checked" ]; then
+    code=0
+    python3 "$H/run_with_deadline.py" "$DEADLINE" "$LOGS/module-check.log" -- \
+      "$BUILD" PUBG_BlueprintEditor Mac Development -project="$UPROJECT" -WaitMutex -Module=PUBG_Blueprint || code=$?
+    [ "$code" -eq 124 ] && exit 0
+    if [ "$code" -ne 0 ]; then
+      if grep -qE "PUBG_BP_Project/Source/.*(error|Error)" "$LOGS/module-check.log"; then
+        echo "::error::The game C++ module (PUBG_Blueprint) does not compile."
+        "$H/first_errors.sh" "$LOGS/module-check.log"
+        exit "$code"
+      fi
+      echo "::warning::Module-only check failed for another reason (exit $code); continuing with the full build."
+    fi
+    touch "$MARK/module.checked"
+  fi
   run editor "$BUILD" PUBG_BlueprintEditor Mac Development -project="$UPROJECT" -WaitMutex
   run shadercompileworker "$BUILD" ShaderCompileWorker Mac Development -WaitMutex
   run unrealpak "$BUILD" UnrealPak Mac Development -WaitMutex
