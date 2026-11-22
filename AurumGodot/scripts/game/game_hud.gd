@@ -487,7 +487,7 @@ func _build_loading() -> void:
 	var t := _label("VIS ISLAND", 90, GOLD)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(t)
-	var s := _label("Croatia  ·  real terrain  ·  43.04°N 16.15°E", 30, Color(1, 1, 1, 0.7))
+	var s := _label("Croatia  ·  real terrain, streets and buildings  ·  43.04°N 16.15°E", 30, Color(1, 1, 1, 0.7))
 	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(s)
 	var holder := CenterContainer.new()
@@ -500,6 +500,9 @@ func _build_loading() -> void:
 	_loading_label = _label("Loading...", 28, Color(1, 1, 1, 0.7))
 	_loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_loading_label)
+	var attribution := _label("Map data © OpenStreetMap contributors (ODbL)  ·  Elevation: AWS Terrain Tiles / SRTM", 22, Color(1, 1, 1, 0.45))
+	attribution.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(attribution)
 
 
 func set_loading(progress: float, text: String) -> void:

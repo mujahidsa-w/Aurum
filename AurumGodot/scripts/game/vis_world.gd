@@ -5,6 +5,7 @@ extends Node3D
 
 const MapData := preload("res://maps/vis/vis_map.gd")
 const MK := preload("res://scripts/mesh_kit.gd")
+const OsmBuilder := preload("res://scripts/game/osm_builder.gd")
 
 const CHUNK := 48
 const TEX := "res://assets/textures/"
@@ -107,6 +108,7 @@ var _shutter_mats: Array[StandardMaterial3D] = []
 var _concrete_mat: StandardMaterial3D
 var _asphalt_mat: StandardMaterial3D
 var _tree_trunk_mat: StandardMaterial3D
+var _dirt_mat: StandardMaterial3D
 var _tree_leaf_mat: StandardMaterial3D
 
 
@@ -129,8 +131,15 @@ func build(progress: Callable) -> void:
 	progress.call(0.45, "Sea")
 	_build_sea()
 	await get_tree().process_frame
-	progress.call(0.55, "Towns")
-	_build_towns()
+	if OsmBuilder.available():
+		progress.call(0.55, "Real buildings and roads (OpenStreetMap)")
+		await get_tree().process_frame
+		var built := OsmBuilder.build(self)
+		if built < 50:
+			_build_towns()
+	else:
+		progress.call(0.55, "Towns")
+		_build_towns()
 	await get_tree().process_frame
 	progress.call(0.7, "Military sites")
 	_build_military()
@@ -246,11 +255,25 @@ func _make_materials() -> void:
 		_shutter_mats.append(MK.mat(c, 0.7))
 	_concrete_mat = _textured("concrete", 0.2)
 	_asphalt_mat = _textured("asphalt", 0.08)
+	_dirt_mat = _textured("dirt", 0.12)
 	_tree_trunk_mat = MK.mat(Color(0.32, 0.24, 0.17), 0.95)
 	_tree_leaf_mat = MK.mat(Color(0.2, 0.32, 0.14), 0.9)
 	_tree_leaf_mat.albedo_texture = MK.noise_texture([Color(0.14, 0.24, 0.1), Color(0.26, 0.38, 0.17), Color(0.33, 0.42, 0.2)], [0.0, 0.6, 1.0], 0.08, 128, 9)
 	_tree_leaf_mat.uv1_triplanar = true
 	_tree_leaf_mat.uv1_scale = Vector3(0.6, 0.6, 0.6)
+
+
+## Materials shared with the OpenStreetMap building/road builder.
+func osm_materials() -> Dictionary:
+	return {
+		"plaster": _plaster_mats,
+		"shutters": _shutter_mats,
+		"roof": _roof_mat,
+		"window": _window_mat,
+		"concrete": _concrete_mat,
+		"asphalt": _asphalt_mat,
+		"dirt": _dirt_mat,
+	}
 
 
 ## World-space textured PBR material from res://assets/textures/<name>_*.jpg

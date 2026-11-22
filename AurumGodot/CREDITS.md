@@ -36,7 +36,8 @@ Sky: kloofendal_48d_partly_cloudy_puresky - https://polyhaven.com/hdris
 
 Vis Island, Croatia - elevation from AWS Terrain Tiles (Mapzen / Tilezen), derived from SRTM and other
 public sources: https://github.com/tilezen/joerd/blob/master/docs/attribution.md
-Town positions: Vis, Komiza, Rukavac, Podspilje, Zena Glava, Milna (real place names; buildings are generated).
+Buildings and roads: © OpenStreetMap contributors, ODbL 1.0 - https://www.openstreetmap.org/copyright
+(2,357 building footprints and 672 roads of Vis Island, `maps/vis/osm.tres`; heights estimated where OSM has no floor count.)
 
 ## Other
 
