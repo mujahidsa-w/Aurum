@@ -9,6 +9,7 @@ signal quality_changed
 signal region_changed
 signal outfit_changed
 signal missions_changed
+signal squad_changed
 
 const SAVE_PATH := "user://aurum_save.cfg"
 
@@ -53,6 +54,15 @@ var show_fps := false
 var friends_online := 0
 var friends_total := 10
 var missions: Array = []
+var squad_members: Array = []
+var clan_name := ""
+var joined_events: Array = []
+var installed_packs: Array = []
+var workshop_notify := false
+var season_claimed := false
+var fullscreen := true
+
+const SQUAD_SLOTS := 3
 
 
 func _init() -> void:
@@ -67,6 +77,7 @@ func _init() -> void:
 func _ready() -> void:
 	load_state()
 	Engine.max_fps = FPS_OPTIONS[fps_index]
+	apply_window_mode()
 
 
 # --- Text helpers ---------------------------------------------------------
@@ -213,6 +224,35 @@ func claim_mission(index: int) -> int:
 	return reward
 
 
+func add_squad_member(member: String) -> bool:
+	if squad_members.size() >= SQUAD_SLOTS or squad_members.has(member):
+		return false
+	squad_members.append(member)
+	squad_changed.emit()
+	return true
+
+
+func remove_squad_member(index: int) -> void:
+	if index >= 0 and index < squad_members.size():
+		squad_members.remove_at(index)
+		squad_changed.emit()
+
+
+func set_fullscreen(on: bool) -> void:
+	fullscreen = on
+	apply_window_mode()
+	save_state()
+
+
+func apply_window_mode() -> void:
+	if OS.has_feature("mobile") or OS.has_feature("web"):
+		return
+	if fullscreen:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+
+
 # --- Persistence ----------------------------------------------------------
 
 func save_state() -> void:
@@ -230,6 +270,12 @@ func save_state() -> void:
 	cfg.set_value("settings", "show_fps", show_fps)
 	cfg.set_value("outfit", "outfit_index", outfit_index)
 	cfg.set_value("outfit", "rifle_skin_index", rifle_skin_index)
+	cfg.set_value("social", "clan_name", clan_name)
+	cfg.set_value("social", "joined_events", joined_events)
+	cfg.set_value("settings", "installed_packs", installed_packs)
+	cfg.set_value("settings", "workshop_notify", workshop_notify)
+	cfg.set_value("settings", "fullscreen", fullscreen)
+	cfg.set_value("player", "season_claimed", season_claimed)
 	var claimed: Array = []
 	for m in missions:
 		claimed.append(bool(m["claimed"]))
@@ -254,6 +300,12 @@ func load_state() -> void:
 	show_fps = bool(cfg.get_value("settings", "show_fps", show_fps))
 	outfit_index = int(cfg.get_value("outfit", "outfit_index", outfit_index))
 	rifle_skin_index = int(cfg.get_value("outfit", "rifle_skin_index", rifle_skin_index))
+	clan_name = str(cfg.get_value("social", "clan_name", clan_name))
+	joined_events = cfg.get_value("social", "joined_events", [])
+	installed_packs = cfg.get_value("settings", "installed_packs", [])
+	workshop_notify = bool(cfg.get_value("settings", "workshop_notify", workshop_notify))
+	fullscreen = bool(cfg.get_value("settings", "fullscreen", fullscreen))
+	season_claimed = bool(cfg.get_value("player", "season_claimed", season_claimed))
 	var claimed: Array = cfg.get_value("missions", "claimed", [])
 	for i in mini(claimed.size(), missions.size()):
 		missions[i]["claimed"] = bool(claimed[i])

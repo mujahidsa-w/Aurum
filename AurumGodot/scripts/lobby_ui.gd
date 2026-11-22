@@ -63,6 +63,9 @@ var _fps_label: Label
 var _modal: Control
 var _overlay: Control
 var _crate_result: Label
+var _slot_icons: Array[TextureRect] = []
+var _slot_labels: Array[Label] = []
+var _slot_buttons: Array[Button] = []
 
 var _portrait_cam: Camera3D
 var _portrait_tex: Texture2D
@@ -113,11 +116,13 @@ func _ready() -> void:
 	GameState.quality_changed.connect(_refresh_status)
 	GameState.region_changed.connect(_refresh_status)
 	GameState.missions_changed.connect(_refresh_missions_dot)
+	GameState.squad_changed.connect(_refresh_squad)
 
 	_refresh_currency()
 	_refresh_mode()
 	_refresh_status()
 	_refresh_missions_dot()
+	_refresh_squad()
 	_update_clock()
 	_post_chat("Rania", "anyone wanna play?")
 	_chat_index = 1
@@ -438,7 +443,16 @@ func _build_squad() -> void:
 		if i < 2:
 			var add_badge := _icon(slot, "plus", 14, Color(1, 1, 1, 0.8))
 			add_badge.position = Vector2(38, 38)
-		slot.pressed.connect(_open_find_teammates)
+		if i < 3:
+			var initial := _label(slot, "", 30, GOLD, font_heavy)
+			initial.position = Vector2(0, 2)
+			initial.size = Vector2(56, 52)
+			initial.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			initial.visible = false
+			_slot_icons.append(ic)
+			_slot_labels.append(initial)
+			_slot_buttons.append(slot)
+		slot.pressed.connect(_on_squad_slot.bind(i))
 
 
 func _build_event_banner() -> void:
@@ -642,7 +656,7 @@ func _build_chat() -> void:
 	var emote := _icon_button(self, "smile", 1840, 902, 62, 62, 46, 1.0, 1.0)
 	emote.pressed.connect(_on_emote)
 	var dl := _icon_button(self, "download", 1826, 812, 82, 82, 52, 1.0, 1.0, Color(0.08, 0.1, 0.14, 0.55), 3)
-	dl.pressed.connect(toast.bind("All resource packs are up to date"))
+	dl.pressed.connect(_open_downloads)
 
 
 func _build_nav() -> void:
@@ -776,6 +790,49 @@ func _refresh_status() -> void:
 		_signal_icon.modulate = Color(1.0, 0.8, 0.2)
 	else:
 		_signal_icon.modulate = Color(1.0, 0.35, 0.3)
+
+
+func _refresh_squad() -> void:
+	for i in _slot_buttons.size():
+		var filled := i < GameState.squad_members.size()
+		_slot_icons[i].visible = not filled
+		_slot_labels[i].visible = filled
+		if filled:
+			_slot_labels[i].text = str(GameState.squad_members[i]).substr(0, 1)
+			_slot_buttons[i].add_theme_stylebox_override("normal", _sb(Color(1.0, 0.78, 0.1, 0.18), 3, GOLD, 2))
+		else:
+			_slot_buttons[i].add_theme_stylebox_override("normal", _sb(Color(1, 1, 1, 0.07), 3, Color(1, 1, 1, 0.18), 1))
+	_friends_label.text = "%d/%d" % [GameState.squad_members.size(), GameState.friends_total]
+
+
+func _on_squad_slot(index: int) -> void:
+	if index < GameState.squad_members.size():
+		_open_squad_member(index)
+	else:
+		_open_find_teammates()
+
+
+func _open_squad_member(index: int) -> void:
+	var member := str(GameState.squad_members[index])
+	var body := _open_modal("Squad", 760, 380)
+	var row := _hbox(body, 24)
+	var ic := _icon(row, "person", 90, GOLD)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var vb := VBoxContainer.new()
+	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(vb)
+	_label(vb, member, 46, Color.WHITE, font_heavy)
+	_label(vb, "Ready  ·  %s" % GameState.mode_title(), 28, Color(0.5, 1.0, 0.55), font_medium)
+	var buttons := _hbox(body, 16)
+	_action_button(buttons, "REMOVE FROM SQUAD", _kick_member.bind(index), false, 340)
+	_action_button(buttons, "CLOSE", _close_modal.bind(false), true, 200)
+
+
+func _kick_member(index: int) -> void:
+	var member := str(GameState.squad_members[index])
+	GameState.remove_squad_member(index)
+	_close_modal()
+	toast("%s left the squad" % member)
 
 
 func _refresh_missions_dot() -> void:
@@ -1215,7 +1272,16 @@ func _open_settings() -> void:
 	fps_toggle.button_pressed = GameState.show_fps
 	fps_toggle.add_theme_font_size_override("font_size", 30)
 	fps_toggle.toggled.connect(_set_show_fps)
-	body.add_child(fps_toggle)
+	var toggles := _hbox(body, 40)
+	toggles.add_child(fps_toggle)
+	if not (OS.has_feature("mobile") or OS.has_feature("web")):
+		var fs := CheckButton.new()
+		fs.text = "Full screen  (F11)"
+		fs.focus_mode = Control.FOCUS_NONE
+		fs.button_pressed = GameState.fullscreen
+		fs.add_theme_font_size_override("font_size", 30)
+		fs.toggled.connect(GameState.set_fullscreen)
+		toggles.add_child(fs)
 
 
 func _set_show_fps(on: bool) -> void:
@@ -1503,8 +1569,21 @@ func _open_events() -> void:
 		_label(vb, str(e[0]), 34, GOLD, font_heavy)
 		var d := _label(vb, str(e[1]), 26, Color.WHITE, font_medium)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		var join := _action_button(hb, "JOIN", toast.bind("Joined: %s" % str(e[0])), true, 150)
+		var event_name := str(e[0])
+		var joined := GameState.joined_events.has(event_name)
+		var join := _action_button(hb, "JOINED" if joined else "JOIN", _noop, not joined, 170)
+		join.disabled = joined
+		join.pressed.connect(_join_event.bind(event_name, join))
 		join.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+
+func _join_event(event_name: String, button: Button) -> void:
+	if not GameState.joined_events.has(event_name):
+		GameState.joined_events.append(event_name)
+		GameState.save_state()
+	button.text = "JOINED"
+	button.disabled = true
+	toast("Joined: %s" % event_name)
 
 
 func _open_find_teammates() -> void:
@@ -1522,11 +1601,32 @@ func _open_find_teammates() -> void:
 		hb.add_child(vb)
 		_label(vb, str(p[0]), 32, Color.WHITE, font_bold)
 		_label(vb, "Lv. %d   ·   %s" % [int(p[1]), str(p[2])], 24, TEXT_DIM, font_medium)
-		var inv := _action_button(hb, "INVITE", toast.bind("Invite sent to %s" % str(p[0])), true, 160)
+		var who := str(p[0])
+		var in_squad := GameState.squad_members.has(who)
+		var inv := _action_button(hb, "IN SQUAD" if in_squad else "INVITE", _noop, not in_squad, 170)
+		inv.disabled = in_squad
+		inv.pressed.connect(_invite_player.bind(who, inv))
 		inv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 
-func _open_info(title: String, icon_name: String, lines: Array, button_text: String = "") -> void:
+func _invite_player(who: String, button: Button) -> void:
+	if GameState.squad_members.size() >= GameState.SQUAD_SLOTS:
+		toast("Your squad is full")
+		return
+	button.disabled = true
+	button.text = "SENT"
+	toast("Invite sent to %s" % who)
+	get_tree().create_timer(randf_range(1.2, 2.4)).timeout.connect(_invite_accepted.bind(who, button))
+
+
+func _invite_accepted(who: String, button: Button) -> void:
+	if GameState.add_squad_member(who):
+		toast("%s joined your squad" % who)
+	if is_instance_valid(button):
+		button.text = "IN SQUAD"
+
+
+func _open_info(title: String, icon_name: String, lines: Array, button_text: String = "", action: Callable = Callable()) -> void:
 	var body := _open_modal(title, 940, 520)
 	var row := _hbox(body, 30)
 	var holder := CenterContainer.new()
@@ -1541,20 +1641,115 @@ func _open_info(title: String, icon_name: String, lines: Array, button_text: Str
 		var l := _label(vb, str(ln), 30, Color.WHITE, font_medium)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size = Vector2(600, 0)
-	if button_text != "":
-		_action_button(vb, button_text, toast.bind("Coming soon"), true, 300)
+	if button_text != "" and action.is_valid():
+		_action_button(vb, button_text, action, true, 340)
 
 
 func _open_clan() -> void:
-	_open_info("Clan", "shield", ["You are not in a clan yet.", "Join a clan to unlock clan missions, a clan chat and weekly clan rewards."], "CREATE CLAN")
+	if GameState.clan_name != "":
+		_open_info("Clan  ·  " + GameState.clan_name, "shield", ["Members: 1 / 50  (%s - Leader)" % GameState.player_name, "Clan level 1  ·  Weekly clan rewards unlock at 5 members."], "LEAVE CLAN", _leave_clan)
+		return
+	var body := _open_modal("Clan", 940, 460)
+	_label(body, "You are not in a clan yet. Create one and invite your friends.", 30, Color.WHITE, font_medium)
+	var row := _hbox(body, 12)
+	var input := LineEdit.new()
+	input.placeholder_text = "Clan name (3-16 letters)"
+	input.max_length = 16
+	input.custom_minimum_size = Vector2(0, 62)
+	input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	input.add_theme_font_size_override("font_size", 30)
+	input.add_theme_stylebox_override("normal", _margins(_sb(Color(1, 1, 1, 0.08), 6, Color(1, 1, 1, 0.2), 1), 16, 6))
+	input.add_theme_stylebox_override("focus", _margins(_sb(Color(1, 1, 1, 0.1), 6, GOLD, 2), 16, 6))
+	row.add_child(input)
+	_action_button(row, "CREATE  ·  200 GOLD", _create_clan.bind(input), true, 320)
+
+
+func _create_clan(input: LineEdit) -> void:
+	var clan := input.text.strip_edges()
+	if clan.length() < 3:
+		toast("Clan name needs at least 3 letters")
+		return
+	if not GameState.spend_gold(200):
+		toast("Not enough gold")
+		return
+	GameState.clan_name = clan
+	GameState.save_state()
+	_close_modal()
+	toast("Clan %s created!" % clan)
+
+
+func _leave_clan() -> void:
+	var clan := GameState.clan_name
+	GameState.clan_name = ""
+	GameState.save_state()
+	_close_modal()
+	toast("You left %s" % clan)
 
 
 func _open_season() -> void:
-	_open_info("Season 1", "trophy", ["Tier: Gold III  ·  1,240 points", "Reach Platinum to unlock the season avatar frame.", "Season ends in 41 days."])
+	var lines := ["Tier: Gold III  ·  1,240 points", "Reach Platinum to unlock the season avatar frame.", "Season ends in 41 days."]
+	if GameState.season_claimed:
+		_open_info("Season 1", "trophy", lines + ["Tier reward already claimed."])
+	else:
+		_open_info("Season 1", "trophy", lines, "CLAIM TIER REWARD  ·  +150", _claim_season)
+
+
+func _claim_season() -> void:
+	GameState.season_claimed = true
+	GameState.add_gold(150)
+	_close_modal()
+	toast("+150 Gold  ·  Gold III reward")
 
 
 func _open_workshop() -> void:
-	_open_info("Workshop", "wrench", ["Build custom rooms, training maps and your own rule sets.", "The workshop editor is under construction."], "NOTIFY ME")
+	var state := "ON" if GameState.workshop_notify else "OFF"
+	_open_info("Workshop", "wrench", ["Build custom rooms, training maps and your own rule sets.", "Workshop launch notifications: %s" % state], "TURN NOTIFICATIONS " + ("OFF" if GameState.workshop_notify else "ON"), _toggle_workshop_notify)
+
+
+func _toggle_workshop_notify() -> void:
+	GameState.workshop_notify = not GameState.workshop_notify
+	GameState.save_state()
+	toast("Workshop notifications %s" % ("on" if GameState.workshop_notify else "off"))
+	_open_workshop()
+
+
+func _open_downloads() -> void:
+	var body := _open_modal("Resource Packs", 1000, 600)
+	var packs := [["HD Textures", "420 MB"], ["Arabic Voice Pack", "85 MB"], ["Solara Map Pack", "1.2 GB"], ["Classic Music", "60 MB"]]
+	for pk in packs:
+		var pack_name := str(pk[0])
+		var card := _card(body)
+		var hb := _hbox(card, 18)
+		var ic := _icon(hb, "download", 44)
+		ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var vb := VBoxContainer.new()
+		vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		vb.add_theme_constant_override("separation", 6)
+		hb.add_child(vb)
+		_label(vb, "%s   ·   %s" % [pack_name, str(pk[1])], 30, Color.WHITE, font_bold)
+		var installed := GameState.installed_packs.has(pack_name)
+		var bar := _progress(vb, 1.0 if installed else 0.0, 520, 10)
+		var btn := _action_button(hb, "INSTALLED" if installed else "DOWNLOAD", _noop, not installed, 200)
+		btn.disabled = installed
+		btn.pressed.connect(_download_pack.bind(pack_name, bar, btn))
+		btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+
+func _download_pack(pack_name: String, bar: ProgressBar, btn: Button) -> void:
+	btn.disabled = true
+	btn.text = "DOWNLOADING"
+	var tw := create_tween()
+	tw.tween_property(bar, "value", 1.0, 2.5).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(_pack_installed.bind(pack_name, btn))
+
+
+func _pack_installed(pack_name: String, btn: Button) -> void:
+	if not GameState.installed_packs.has(pack_name):
+		GameState.installed_packs.append(pack_name)
+		GameState.save_state()
+	if is_instance_valid(btn):
+		btn.text = "INSTALLED"
+	toast("%s installed" % pack_name)
 
 
 func _open_notices() -> void:

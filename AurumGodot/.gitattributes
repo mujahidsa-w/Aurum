@@ -1,0 +1,4 @@
+# Keep this Godot project's small binaries in plain git (no LFS), so a normal clone opens in Godot.
+*.fbx -filter -diff -merge binary
+*.png -filter -diff -merge binary
+*.ttf binary

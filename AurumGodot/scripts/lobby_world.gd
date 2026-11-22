@@ -143,6 +143,7 @@ void fragment() {
 """
 
 const DIRT_RADIUS := 3.4
+const CRATE_MODEL := "res://models/wooden_crate_1.fbx"
 const BUGGY_POS := Vector3(-3.5, 0.0, -4.7)
 
 var camera: Camera3D
@@ -642,19 +643,36 @@ func _build_wreck() -> void:
 func _build_props() -> void:
 	var wood := MK.mat(Color(0.47, 0.35, 0.21), 0.9)
 	var wood_dark := MK.mat(Color(0.32, 0.23, 0.14), 0.9)
+	# Wooden ammo crates (imported FBX model). [position, yaw, longest side in metres]
+	var crate_mat := StandardMaterial3D.new()
+	crate_mat.albedo_texture = MK.noise_texture([Color(0.3, 0.2, 0.11), Color(0.5, 0.36, 0.2), Color(0.42, 0.3, 0.17)], [0.0, 0.55, 1.0], 0.06, 256, 23)
+	crate_mat.uv1_triplanar = true
+	crate_mat.uv1_scale = Vector3(1.5, 6.0, 1.5)
+	crate_mat.roughness = 0.85
 	var crates := [
-		[Vector3(-5.6, 0.5, -12.2), 15.0, 1.0],
-		[Vector3(-4.5, 0.4, -12.6), -8.0, 0.8],
-		[Vector3(-5.1, 1.3, -12.3), 30.0, 0.7],
-		[Vector3(6.8, 0.45, -9.5), 25.0, 0.9],
+		[Vector3(-5.4, 0, -12.3), 15.0, 1.3],
+		[Vector3(-4.2, 0, -12.9), -8.0, 1.2],
+		[Vector3(2.9, 0, -2.7), 68.0, 1.05],
+		[Vector3(6.8, 0, -9.5), 25.0, 1.3],
 	]
-	for c in crates:
+	var stack_height := -1.0
+	for i in crates.size():
+		var c: Array = crates[i]
 		var pos: Vector3 = c[0]
 		var yaw: float = c[1]
 		var s: float = c[2]
-		MK.box(self, Vector3(s, s, s), pos, wood, Vector3(0, yaw, 0))
-		MK.box(self, Vector3(s * 1.02, s * 0.12, s * 1.02), pos + Vector3(0, s * 0.3, 0), wood_dark, Vector3(0, yaw, 0))
-		MK.box(self, Vector3(s * 1.02, s * 0.12, s * 1.02), pos - Vector3(0, s * 0.3, 0), wood_dark, Vector3(0, yaw, 0))
+		var h := _place_model(CRATE_MODEL, pos, yaw, s, crate_mat)
+		if h < 0.0:
+			# Model missing: fall back to a simple box crate.
+			MK.box(self, Vector3(s * 0.5, s * 0.45, s), pos + Vector3(0, s * 0.225, 0), wood, Vector3(0, yaw, 0))
+			MK.box(self, Vector3(s * 0.52, s * 0.06, s * 1.02), pos + Vector3(0, s * 0.35, 0), wood_dark, Vector3(0, yaw, 0))
+			h = s * 0.45
+		if i == 0:
+			stack_height = h
+	# One more crate stacked on the first.
+	if stack_height > 0.0:
+		if _place_model(CRATE_MODEL, Vector3(-5.35, stack_height, -12.25), 40.0, 1.1, crate_mat) < 0.0:
+			MK.box(self, Vector3(0.55, 0.5, 1.1), Vector3(-5.35, stack_height + 0.25, -12.25), wood, Vector3(0, 40, 0))
 
 	var barrels := [
 		[Vector3(-2.1, 0.45, -9.2), Color(0.25, 0.33, 0.22)],
@@ -677,6 +695,43 @@ func _build_props() -> void:
 		var pos := Vector3(cos(ang) * dist, 0.0, -absf(sin(ang)) * dist - 2.0)
 		var s := rng.randf_range(0.25, 0.9)
 		MK.sphere(self, s, pos, rock, Vector3(1.3, 0.6, 1.0), Vector3(0, rng.randf() * 360.0, 0), 7)
+
+
+## Instances an imported model (FBX/GLB), scales it so its longest side is `longest` metres,
+## sits it on the ground at `pos` and returns its final height (or -1 if it could not be loaded).
+func _place_model(path: String, pos: Vector3, yaw_deg: float, longest: float, mat_override: Material) -> float:
+	if not ResourceLoader.exists(path):
+		return -1.0
+	var scene := load(path) as PackedScene
+	if scene == null:
+		return -1.0
+	var inst := scene.instantiate() as Node3D
+	if inst == null:
+		return -1.0
+	var holder := Node3D.new()
+	holder.name = path.get_file().get_basename()
+	add_child(holder)
+	holder.position = pos
+	holder.rotation_degrees = Vector3(0, yaw_deg, 0)
+	holder.add_child(inst)
+	var box := AABB()
+	var found := false
+	var to_holder := holder.global_transform.affine_inverse()
+	for n in inst.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		var part: AABB = to_holder * mi.global_transform * mi.get_aabb()
+		box = box.merge(part) if found else part
+		found = true
+		if mat_override:
+			mi.material_override = mat_override
+	if not found or box.get_longest_axis_size() <= 0.0:
+		holder.queue_free()
+		return -1.0
+	var k := longest / box.get_longest_axis_size()
+	var centre := box.get_center()
+	var offset := -Vector3(centre.x, box.position.y, centre.z) * k
+	inst.transform = Transform3D(Basis.from_scale(Vector3(k, k, k)), offset) * inst.transform
+	return box.size.y * k
 
 
 # --- Trees ------------------------------------------------------------------------

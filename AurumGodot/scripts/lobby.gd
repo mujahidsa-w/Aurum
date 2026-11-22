@@ -57,6 +57,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		_spin_velocity = lerpf(_spin_velocity, degrees / dt, 0.5)
 
 
+## F11 or Alt+Enter toggles full screen on desktop.
+func _unhandled_key_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo:
+		return
+	if key.keycode == KEY_F11 or (key.keycode == KEY_ENTER and key.alt_pressed):
+		GameState.set_fullscreen(not GameState.fullscreen)
+		get_viewport().set_input_as_handled()
+
+
 func _process(delta: float) -> void:
 	if _dragging or absf(_spin_velocity) < 1.0:
 		return
