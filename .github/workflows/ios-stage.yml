@@ -121,6 +121,39 @@ jobs:
           done
           df -h /
 
+      # The .NET SDK that Setup.sh downloads has repeatedly arrived broken on these
+      # runners (crash on start, missing files). Replace it with the same SDK channel
+      # from Microsoft's official installer and check that it runs.
+      - name: Replace the bundled .NET SDK with an official install
+        run: |
+          DN=$(ls -d "$UE"/Engine/Binaries/ThirdParty/DotNet/*/mac-arm64 | head -1)
+          CHANNEL=$(basename "$(dirname "$DN")")
+          VER=$(python3 - "$UE" <<'PY2'
+          import json, sys, pathlib
+          for g in sorted(pathlib.Path(sys.argv[1], "Engine").rglob("global.json")):
+              try:
+                  v = json.loads(g.read_text()).get("sdk", {}).get("version")
+              except Exception:
+                  continue
+              if v:
+                  print(v); break
+          PY2
+          )
+          echo "Bundled SDK dir: $DN (channel $CHANNEL, global.json version: ${VER:-none})"
+          curl -fsSL --retry 5 https://dot.net/v1/dotnet-install.sh -o "$RUNNER_TEMP/dotnet-install.sh"
+          for i in 1 2 3; do
+            rm -rf "$DN"
+            if [ -n "$VER" ]; then
+              bash "$RUNNER_TEMP/dotnet-install.sh" --version "$VER" --install-dir "$DN" --no-path \
+                || bash "$RUNNER_TEMP/dotnet-install.sh" --channel "$CHANNEL" --install-dir "$DN" --no-path
+            else
+              bash "$RUNNER_TEMP/dotnet-install.sh" --channel "$CHANNEL" --install-dir "$DN" --no-path
+            fi
+            "$DN/dotnet" --info && break
+            [ "$i" -eq 3 ] && { echo "::error::The .NET SDK does not run even after 3 fresh installs."; exit 1; }
+            echo "::warning::.NET SDK does not run (attempt $i); installing again."
+          done
+
       - name: Build UnrealBuildTool, configure it for this runner
         run: |
           cd "$UE"
