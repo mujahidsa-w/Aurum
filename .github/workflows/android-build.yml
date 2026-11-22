@@ -9,6 +9,11 @@
 name: Android Build (UE5, APK)
 
 on:
+  # Until this file is on the default branch it cannot be started from the
+  # Actions page; changing .github/android/run-request on this branch starts it.
+  push:
+    branches: [claude/clever-edison-8e8q21]
+    paths: [.github/android/run-request]
   workflow_dispatch:
     inputs:
       ue_ref:
@@ -38,7 +43,7 @@ jobs:
       - id: ref
         env:
           TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
-          REF: ${{ inputs.ue_ref }}
+          REF: ${{ inputs.ue_ref || '5.8' }}
         run: |
           if [ -z "$TOKEN" ]; then echo "::error::Secret EPIC_GITHUB_TOKEN is missing."; exit 1; fi
           if echo "$REF" | grep -qE '^[0-9a-f]{40}$'; then SHA=$REF; else
@@ -58,7 +63,7 @@ jobs:
       stage: 1
       prev_state: ''
       ue_sha: ${{ needs.prepare.outputs.sha }}
-      config: ${{ inputs.config }}
+      config: ${{ inputs.config || 'Development' }}
 
   s2:
     name: Stage 2
@@ -70,7 +75,7 @@ jobs:
       stage: 2
       prev_state: android-state-1
       ue_sha: ${{ needs.prepare.outputs.sha }}
-      config: ${{ inputs.config }}
+      config: ${{ inputs.config || 'Development' }}
 
   s3:
     name: Stage 3
@@ -82,7 +87,7 @@ jobs:
       stage: 3
       prev_state: android-state-2
       ue_sha: ${{ needs.prepare.outputs.sha }}
-      config: ${{ inputs.config }}
+      config: ${{ inputs.config || 'Development' }}
 
   s4:
     name: Stage 4
@@ -94,7 +99,7 @@ jobs:
       stage: 4
       prev_state: android-state-3
       ue_sha: ${{ needs.prepare.outputs.sha }}
-      config: ${{ inputs.config }}
+      config: ${{ inputs.config || 'Development' }}
 
   s5:
     name: Stage 5
@@ -106,7 +111,7 @@ jobs:
       stage: 5
       prev_state: android-state-4
       ue_sha: ${{ needs.prepare.outputs.sha }}
-      config: ${{ inputs.config }}
+      config: ${{ inputs.config || 'Development' }}
 
   s6:
     name: Stage 6
@@ -118,7 +123,7 @@ jobs:
       stage: 6
       prev_state: android-state-5
       ue_sha: ${{ needs.prepare.outputs.sha }}
-      config: ${{ inputs.config }}
+      config: ${{ inputs.config || 'Development' }}
 
   result:
     name: Result
@@ -130,7 +135,7 @@ jobs:
           DONE: ${{ needs.s1.outputs.done == 'true' || needs.s2.outputs.done == 'true' || needs.s3.outputs.done == 'true' || needs.s4.outputs.done == 'true' || needs.s5.outputs.done == 'true' || needs.s6.outputs.done == 'true' }}
         run: |
           if [ "$DONE" = "true" ]; then
-            echo "The APK is in this run's artifacts: AurumMobile-Android-${{ inputs.config }}"
+            echo "The APK is in this run's artifacts: AurumMobile-Android-${{ inputs.config || 'Development' }}"
           else
             echo "::error::No APK was produced. Open the failed stage and the android-logs-stage-N artifact."
             exit 1
