@@ -32,6 +32,9 @@ jobs:
       CONFIG: ${{ inputs.config }}
       JOB_MINUTES: "350"     # GitHub stops a job at 360
       RESERVE_MINUTES: "45"  # time kept to save the build state for the next stage
+      UE_USE_SYSTEM_DOTNET: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
       SETUP_EXCLUDES: --exclude=Win32 --exclude=Win64 --exclude=WinArm64 --exclude=Linux --exclude=Linux32 --exclude=LinuxArm64 --exclude=LinuxAArch64 --exclude=HoloLens
 
     steps:
@@ -41,7 +44,7 @@ jobs:
           echo "UE=$HOME/UE" >> "$GITHUB_ENV"
           echo "OUT_DIR=$RUNNER_TEMP/ipa" >> "$GITHUB_ENV"
           sysctl -n hw.ncpu hw.memsize machdep.cpu.brand_string || true
-          df -h /
+          df -h / /System/Volumes/Data || true
 
       - name: Checkout Aurum (game files are fetched later, only for cooking)
         uses: actions/checkout@v4
@@ -82,10 +85,17 @@ jobs:
           xcrun metal --version
           xcrun simctl delete all || true
           sudo xcrun simctl runtime delete all || true
-          sudo rm -rf /usr/local/share/dotnet ~/Library/Android /usr/local/lib/android ~/.ghcup || true
+          sudo rm -rf ~/Library/Android /usr/local/lib/android ~/.ghcup || true
           command -v zstd >/dev/null || brew install zstd
           sudo mdutil -a -i off || true   # no Spotlight indexing of 100+ GB of build files
           df -h /
+
+      # UE's bundled .NET SDK download has come out broken on these runners
+      # (missing System.CommandLine.dll), so use the official .NET 10 SDK instead.
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
 
       - name: Download engine dependencies (Mac + iOS only)
         run: |
@@ -103,13 +113,14 @@ jobs:
           # GitHub macOS runners sometimes write broken files during the 26 GB dependency
           # download (seen: missing .NET SDK files, I/O errors). If the C# tools do not
           # build, download the bundled .NET SDK again, drop C# build output, retry.
+          dotnet --info | head -20
           for i in 1 2 3; do
             ./GenerateProjectFiles.sh && break
             [ "$i" -eq 3 ] && { echo "::error::UnrealBuildTool could not be built (3 attempts)."; exit 1; }
-            echo "::warning::GenerateProjectFiles failed (attempt $i); re-downloading the .NET SDK and retrying."
+            echo "::warning::GenerateProjectFiles failed (attempt $i); clearing the C# build output and retrying."
+            dotnet build-server shutdown || true
             find Engine/Source/Programs -type d -name obj -prune -exec rm -rf {} +
-            rm -rf Engine/Binaries/ThirdParty/DotNet
-            ./Setup.sh $SETUP_EXCLUDES
+            sync; sleep 10
           done
           python3 "$GITHUB_WORKSPACE/.github/ios/ubt_config.py" "$UE" 3
 
