@@ -64,10 +64,13 @@ fi
 if [ ! -f "$MARK/package-$CONFIG.done" ]; then
   # Real game files come from Git LFS (the checkout only has small pointer files).
   # Level_Battle (~900 MB) is not cooked for iOS (Config/IOS/IOSGame.ini).
-  if [ "$(stat -f %z "$PROJ_DIR/Content/Maps/Level_Test.umap")" -lt 4096 ]; then
+  SRC="$GITHUB_WORKSPACE/PUBG_BP_Project/Content"
+  if [ "$(stat -f %z "$SRC/Maps/Level_Test.umap")" -lt 4096 ]; then
     git -C "$GITHUB_WORKSPACE" lfs pull --exclude="PUBG_BP_Project/Content/Maps/Level_Battle*"
   fi
-  rm -f "$PROJ_DIR"/Content/Maps/Level_Battle.umap "$PROJ_DIR"/Content/Maps/Level_Battle_BuiltData.uasset
+  # Copy onto the build volume (the project is built there, see ios-stage.yml).
+  rsync -a --delete --exclude 'Maps/Level_Battle.umap' --exclude 'Maps/Level_Battle_BuiltData.uasset' \
+    "$SRC/" "$PROJ_DIR/Content/"
   ARCHIVE="$RUNNER_TEMP/archive"; rm -rf "$ARCHIVE"
   ITERATE=""; [ -d "$PROJ_DIR/Saved/Cooked/IOS" ] && ITERATE="-iterate"
   code=0

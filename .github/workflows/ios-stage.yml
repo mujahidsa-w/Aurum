@@ -27,12 +27,16 @@ jobs:
     outputs:
       done: ${{ steps.stage.outputs.done }}
     env:
-      PROJ_DIR: ${{ github.workspace }}/PUBG_BP_Project
-      UPROJECT: ${{ github.workspace }}/PUBG_BP_Project/PUBG_Blueprint.uproject
+      # Everything is built on an HFS+ disk image: on GitHub's macOS VMs, files that
+      # are copied as APFS clones come back corrupted (seen as broken .NET assemblies,
+      # missing SDK files and I/O errors). HFS+ has no clones.
+      VOL: /Volumes/UEBuild
+      UE: /Volumes/UEBuild/UE
+      PROJ_DIR: /Volumes/UEBuild/Aurum/PUBG_BP_Project
+      UPROJECT: /Volumes/UEBuild/Aurum/PUBG_BP_Project/PUBG_Blueprint.uproject
       CONFIG: ${{ inputs.config }}
       JOB_MINUTES: "350"     # GitHub stops a job at 360
       RESERVE_MINUTES: "45"  # time kept to save the build state for the next stage
-      UE_USE_SYSTEM_DOTNET: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
       SETUP_EXCLUDES: --exclude=Win32 --exclude=Win64 --exclude=WinArm64 --exclude=Linux --exclude=Linux32 --exclude=LinuxArm64 --exclude=LinuxAArch64 --exclude=HoloLens
@@ -41,15 +45,27 @@ jobs:
       - name: Start
         run: |
           echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
-          echo "UE=$HOME/UE" >> "$GITHUB_ENV"
           echo "OUT_DIR=$RUNNER_TEMP/ipa" >> "$GITHUB_ENV"
           sysctl -n hw.ncpu hw.memsize machdep.cpu.brand_string || true
           df -h / /System/Volumes/Data || true
+
+      - name: Create the build volume (HFS+)
+        run: |
+          hdiutil create -size 400g -type SPARSE -fs "HFS+J" -volname UEBuild "$HOME/uebuild.sparseimage"
+          hdiutil attach -nobrowse -noverify -mountpoint "$VOL" "$HOME/uebuild.sparseimage"
+          sudo mdutil -i off "$VOL" || true
+          diskutil info "$VOL" | grep -E "File System Personality|Volume Name" || true
 
       - name: Checkout Aurum (game files are fetched later, only for cooking)
         uses: actions/checkout@v4
         with:
           lfs: false
+
+      - name: Copy the project onto the build volume
+        run: |
+          mkdir -p "$VOL/Aurum"
+          rsync -a --exclude Content "$GITHUB_WORKSPACE/PUBG_BP_Project" "$VOL/Aurum/"
+          ls "$PROJ_DIR"
 
       - name: Get Unreal Engine source (${{ inputs.ue_sha }})
         env:
@@ -90,13 +106,6 @@ jobs:
           sudo mdutil -a -i off || true   # no Spotlight indexing of 100+ GB of build files
           df -h /
 
-      # UE's bundled .NET SDK download has come out broken on these runners
-      # (missing System.CommandLine.dll), so use the official .NET 10 SDK instead.
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-
       - name: Download engine dependencies (Mac + iOS only)
         run: |
           cd "$UE"
@@ -110,15 +119,11 @@ jobs:
       - name: Build UnrealBuildTool, configure it for this runner
         run: |
           cd "$UE"
-          # GitHub macOS runners sometimes write broken files during the 26 GB dependency
-          # download (seen: missing .NET SDK files, I/O errors). If the C# tools do not
-          # build, download the bundled .NET SDK again, drop C# build output, retry.
-          dotnet --info | head -20
+          # If the C# tools still fail to build, clear their output and retry.
           for i in 1 2 3; do
             ./GenerateProjectFiles.sh && break
             [ "$i" -eq 3 ] && { echo "::error::UnrealBuildTool could not be built (3 attempts)."; exit 1; }
             echo "::warning::GenerateProjectFiles failed (attempt $i); clearing the C# build output and retrying."
-            dotnet build-server shutdown || true
             find Engine/Source/Programs -type d -name obj -prune -exec rm -rf {} +
             sync; sleep 10
           done
@@ -194,7 +199,7 @@ jobs:
           name: ios-logs-stage-${{ inputs.stage }}
           path: |
             ${{ runner.temp }}/logs
-            ~/UE/Engine/Programs/UnrealBuildTool/Log*.txt
+            /Volumes/UEBuild/UE/Engine/Programs/UnrealBuildTool/Log*.txt
             ~/Library/Logs/Unreal Engine/LocalBuildLogs
           if-no-files-found: ignore
           retention-days: 14
