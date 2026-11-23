@@ -1,0 +1,67 @@
+name: Aurum screenshots (real renderer)
+
+# Renders the lobby with Godot's real Vulkan renderer (Mesa lavapipe under a virtual
+# display) and commits the PNGs to screenshots/ on the same branch.
+on:
+  push:
+    branches: ["claude/**"]
+    paths: ["AurumGodot/tests/screenshot.gd", ".github/workflows/screenshots.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_RELEASE: "stable"
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Virtual display + software Vulkan
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb mesa-vulkan-drivers libvulkan1 vulkan-tools >/dev/null
+          vulkaninfo --summary 2>/dev/null | head -20 || true
+
+      - name: Download Godot (official build)
+        run: |
+          base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64 godot
+          chmod +x godot
+
+      - name: Import project
+        run: ./godot --headless --path AurumGodot --import > import.log 2>&1 || true
+
+      - name: Render screenshots
+        run: |
+          d="$HOME/.local/share/godot/app_userdata/Aurum"
+          mkdir -p "$d"
+          printf '[account]\nauth_provider="guest"\n\n[player]\nname="Mujahid"\ncharacter_id="nathan"\noutfit_id="original"\ntrained=true\nequipped_weapon="m4a1"\n' > "$d/aurum_save.cfg"
+          mkdir -p screenshots
+          export SHOT_DIR="$PWD/screenshots"
+          timeout 600 xvfb-run -a -s "-screen 0 1920x1080x24" ./godot --path AurumGodot --rendering-driver vulkan --resolution 1920x1080 res://tests/screenshot.tscn 2>&1 | tee shots.log || true
+          ls -la screenshots
+
+      - name: Commit screenshots
+        run: |
+          if [ -z "$(ls screenshots/*.png 2>/dev/null)" ]; then echo "no screenshots"; exit 1; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add screenshots/*.png
+          git commit -m "Screenshots: lobby (real renderer) [skip ci]" || exit 0
+          for i in 1 2 3; do git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME" && break; sleep 5; done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: |
+            screenshots/*.png
+            shots.log
