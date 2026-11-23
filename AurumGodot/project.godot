@@ -23,6 +23,7 @@ config/icon="res://icon.svg"
 GameState="*res://scripts/game_state.gd"
 SceneRouter="*res://scripts/scene_router.gd"
 Online="*res://scripts/online/online.gd"
+Net="*res://scripts/net/net.gd"
 
 [display]
 

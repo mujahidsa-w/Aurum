@@ -1,0 +1,14 @@
+# docker compose -f server/docker-compose.yml up -d --build   (run from the repository root)
+services:
+  aurum:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    image: aurum-server
+    container_name: aurum-server
+    restart: unless-stopped
+    ports:
+      - "7777:7777/udp"
+    environment:
+      AURUM_PORT: "7777"
+      AURUM_LOBBY_SECONDS: "30"

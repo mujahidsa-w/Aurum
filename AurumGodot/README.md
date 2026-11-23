@@ -49,7 +49,8 @@
 2. **Realtime Database ← Rules**: الصق محتوى `firebase/database.rules.json` واضغط Publish (يحمي بيانات كل لاعب ويمنع التلاعب).
 3. لتسجيل جوجل داخل Firebase: أنشئ OAuth client (نوع TVs and Limited Input) **داخل نفس مشروع Google Cloud** `ms-company-e7166`، أو أضف رقمه في Authentication ← Google ← *Safelisted client IDs*، وضع الرقم في `scripts/onboarding/google_config.gd`.
 
-> **ملاحظة صريحة عن اللعب الجماعي في نفس المباراة:** الأصدقاء والفرق والحضور والحفظ تعمل الآن عبر Firebase. أما أن يكون أكثر من لاعب حقيقي **داخل نفس المباراة** في الوقت الفعلي فيحتاج **سيرفر ألعاب** (Godot headless على VPS أو خدمة مثل Edgegap / Hathora). Firebase لا يصلح لمزامنة الحركة والرصاص 30–60 مرة بالثانية. المباريات حالياً ضد بوتات.
+## اللعب الجماعي الحقيقي (سيرفر مخصّص)
+السيرفر جاهز: نفس المشروع يشتغل كسيرفر Godot بدون شاشة (ENet / UDP 7777). فيه غرفة انتظار، ومباراة حتى 24 لاعب حقيقي والباقي بوتات على السيرفر، وحركة متزامنة، وضرر يقرره السيرفر، وزون متزامن. التشغيل بـ Docker والربط بالتطبيق عبر Firebase بدون إعادة بناء — التفاصيل في [`server/README.md`](../server/README.md). بدون سيرفر، اللعبة بتلعب ضد البوتات.
 
 ## نسخة الآيفون (IPA غير موقّعة) عبر GitHub Actions
 الملف `.github/workflows/godot-ios.yml` يعمل تلقائياً عند كل push:

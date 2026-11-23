@@ -114,7 +114,10 @@ func _on_hit(b: Dictionary, hit: Dictionary) -> void:
 	var point: Vector3 = hit["position"]
 	var normal: Vector3 = hit["normal"]
 	var shooter: Node = b["shooter"]
-	if collider and collider.has_method("take_hit"):
+	if float(b["damage"]) <= 0.0:
+		# Visual replay of another machine's shot: effects only, the server decides damage.
+		_spawn_impact(point, normal, collider != null and collider.has_method("take_hit"))
+	elif collider and collider.has_method("take_hit"):
 		var result: Dictionary = collider.call("take_hit", float(b["damage"]), shooter, point)
 		_spawn_impact(point, normal, true)
 		if float(result.get("damage", 0.0)) > 0.0:

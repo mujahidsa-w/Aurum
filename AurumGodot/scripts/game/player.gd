@@ -247,9 +247,31 @@ func interact() -> void:
 		"medkit":
 			medkits += 1
 	nearby.erase(best)
+	if get_parent().has_method("on_pickup_taken"):
+		get_parent().call("on_pickup_taken", best)
 	best.queue_free()
 	pickups_changed.emit()
 	weapon_changed.emit()
+
+
+## In an online match the server owns health: own damage (falls) is reported to it.
+func take_hit(damage: float, attacker: Node, point: Vector3) -> Dictionary:
+	if Net.is_client_match():
+		if alive and damage > 0.0:
+			Net.send_hit(Net.my_id(), damage, point.y - global_position.y)
+		return {"damage": 0.0, "headshot": false, "killed": false}
+	return super.take_hit(damage, attacker, point)
+
+
+## Damage decided by the server in an online match.
+func net_damaged(amount: float, attacker: Node, new_health: float, killed: bool) -> void:
+	if not alive:
+		return
+	health = new_health
+	health_changed.emit(health)
+	_on_damaged(amount, attacker)
+	if killed:
+		die(attacker)
 
 
 func start_heal() -> void:

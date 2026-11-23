@@ -71,6 +71,8 @@ var character_id := ""       # chosen realistic character (see character_db.gd)
 var outfit_id := "original"
 var trained := false
 var equipped_weapon := "m4a1"
+## Multiplayer server ("host" or "host:port"); empty = use the online config / offline.
+var server_address := ""
 ## Result of the connection test on the startup screen.
 ## Unix time of the last change, used to pick the newest copy between device and cloud.
 var updated_at := 0
@@ -360,6 +362,7 @@ func _to_cfg() -> ConfigFile:
 	cfg.set_value("player", "outfit_id", outfit_id)
 	cfg.set_value("player", "trained", trained)
 	cfg.set_value("player", "equipped_weapon", equipped_weapon)
+	cfg.set_value("settings", "server_address", server_address)
 	var claimed: Array = []
 	for m in missions:
 		claimed.append(bool(m["claimed"]))
@@ -403,6 +406,7 @@ func _apply_cfg(cfg: ConfigFile) -> void:
 	outfit_id = str(cfg.get_value("player", "outfit_id", outfit_id))
 	trained = bool(cfg.get_value("player", "trained", trained))
 	equipped_weapon = str(cfg.get_value("player", "equipped_weapon", equipped_weapon))
+	server_address = str(cfg.get_value("settings", "server_address", server_address))
 	var claimed := _as_array(cfg.get_value("missions", "claimed", []))
 	for i in mini(claimed.size(), missions.size()):
 		missions[i]["claimed"] = bool(claimed[i])

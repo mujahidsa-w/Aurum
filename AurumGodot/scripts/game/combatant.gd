@@ -5,6 +5,10 @@ extends CharacterBody3D
 signal died(victim: Node, killer: Node)
 signal health_changed(value: float)
 signal weapon_changed
+## Emitted for every hit taken (used by the dedicated server to broadcast damage).
+signal hurt(amount: float, attacker: Node, headshot: bool, killed: bool)
+## Emitted for every shot (origin, direction) so the network layer can replay it elsewhere.
+signal fired_shot(origin: Vector3, dir: Vector3)
 
 const WeaponDB := preload("res://scripts/game/weapon_db.gd")
 const SoldierMesh := preload("res://scripts/game/soldier_mesh.gd")
@@ -271,6 +275,7 @@ func try_fire(target: Vector3, spread_mult: float, just_pressed: bool) -> bool:
 		ballistics.call("fire", origin, spread_dir(dir, spread), float(w["velocity"]), float(w["damage"]), self, show_tracers and (pellets == 1 or i < 3))
 	_flash_t = 0.05
 	_play_shot(w)
+	fired_shot.emit(origin, dir)
 	_on_fired(w)
 	if int(mags[id]) == 0 and reserve_for_current() > 0:
 		start_reload()
@@ -477,10 +482,11 @@ func take_hit(damage: float, attacker: Node, point: Vector3) -> Dictionary:
 	health = maxf(health - dmg, 0.0)
 	health_changed.emit(health)
 	_on_damaged(dmg, attacker)
-	var killed := false
-	if health <= 0.0:
+	var killed := health <= 0.0
+	# Damage is announced before the death so listeners see the hit, then the kill.
+	hurt.emit(dmg, attacker, head, killed)
+	if killed:
 		die(attacker)
-		killed = true
 	return {"damage": dmg, "headshot": head, "killed": killed}
 
 

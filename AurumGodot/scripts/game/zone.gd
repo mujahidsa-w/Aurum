@@ -22,6 +22,8 @@ var damage := 0.6
 var phase := -1
 var shrinking := false
 var timer := 0.0
+## Online clients follow the server's zone instead of choosing circles themselves.
+var follower := false
 
 var _start_radius := 6000.0
 var _from_center := Vector2.ZERO
@@ -79,6 +81,10 @@ func _start_phase(index: int) -> void:
 	timer = float(p[0])
 	damage = float(p[3])
 	next_radius = _start_radius * float(p[2])
+	if follower:
+		next_center = center
+		phase_changed.emit(phase)
+		return
 	# The next circle lies fully inside the current one, preferring land.
 	var best := center
 	for attempt in 30:
@@ -118,6 +124,27 @@ func _update_wall() -> void:
 	if _wall:
 		_wall.scale = Vector3(maxf(radius, 0.5), 1.0, maxf(radius, 0.5))
 		_wall.position = Vector3(center.x, 250.0, center.y)
+
+
+func get_state() -> Array:
+	return [center, radius, next_center, next_radius, phase, shrinking, timer, _from_center, _from_radius, _shrink_time, damage]
+
+
+func apply_state(s: Array) -> void:
+	if s.size() < 11:
+		return
+	center = s[0]
+	radius = float(s[1])
+	next_center = s[2]
+	next_radius = float(s[3])
+	phase = int(s[4])
+	shrinking = bool(s[5])
+	timer = float(s[6])
+	_from_center = s[7]
+	_from_radius = float(s[8])
+	_shrink_time = float(s[9])
+	damage = float(s[10])
+	_update_wall()
 
 
 func is_inside(p: Vector3) -> bool:

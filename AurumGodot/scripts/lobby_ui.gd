@@ -5,6 +5,7 @@ extends Control
 ## Layout is authored for a 1920x1080 canvas and anchored to the screen corners,
 ## so it adapts to wider phones and tablets.
 
+const NetConfig := preload("res://scripts/net/net_config.gd")
 const Icons := preload("res://scripts/ui_icons.gd")
 const LobbyWorld := preload("res://scripts/lobby_world.gd")
 const CharacterModel := preload("res://scripts/character_model.gd")
@@ -86,6 +87,8 @@ var _chat_log: Array[String] = []
 var _match_state := Match.IDLE
 var _match_elapsed := 0.0
 var _match_needed := 0.0
+## Matchmaking on the multiplayer server (otherwise a local match against bots).
+var _online_search := false
 
 
 func _ready() -> void:
@@ -99,6 +102,9 @@ func _ready() -> void:
 	th.default_font_size = 28
 	theme = th
 
+	Net.lobby_updated.connect(_on_net_lobby)
+	Net.match_started.connect(_on_net_match_started)
+	Net.connection_lost.connect(_on_net_lost)
 	Online.friends_changed.connect(_on_online_changed)
 	Online.requests_changed.connect(_on_online_changed)
 	Online.invites_changed.connect(_on_online_changed)
@@ -163,9 +169,10 @@ func _process(delta: float) -> void:
 	if _match_state == Match.SEARCHING:
 		_match_elapsed += delta
 		var secs := int(_match_elapsed)
-		_mode_sub.text = "Matching...  %02d:%02d" % [secs / 60, secs % 60]
-		if _match_elapsed >= _match_needed:
-			_on_match_found()
+		if not _online_search:
+			_mode_sub.text = "Matching...  %02d:%02d" % [secs / 60, secs % 60]
+			if _match_elapsed >= _match_needed:
+				_on_match_found()
 
 
 func _input(event: InputEvent) -> void:
@@ -919,9 +926,15 @@ func _begin_matching() -> void:
 	_start_play.visible = false
 	_mode_card.disabled = true
 	_mode_sub.text = "Matching...  00:00"
+	_online_search = Net.find_match()
+	if _online_search:
+		_mode_sub.text = "Connecting to the server..."
 
 
 func _stop_matching() -> void:
+	if _online_search:
+		_online_search = false
+		Net.leave()
 	_match_state = Match.IDLE
 	_start_label.text = "START"
 	_start_label.add_theme_font_size_override("font_size", 116)
@@ -965,6 +978,25 @@ func _on_match_found() -> void:
 	tw.tween_property(bar, "value", 1.0, 3.2).set_delay(0.4).set_trans(Tween.TRANS_SINE)
 	tw.chain().tween_interval(0.4)
 	tw.chain().tween_callback(_finish_match)
+
+
+func _on_net_lobby(players: int, seconds_left: int) -> void:
+	if _online_search and _match_state == Match.SEARCHING:
+		_mode_sub.text = "Online  ·  %d/%d players  ·  starts in %ds" % [players, NetConfig.MAX_PLAYERS, seconds_left]
+
+
+func _on_net_match_started() -> void:
+	if _online_search and _match_state == Match.SEARCHING:
+		_on_match_found()
+
+
+func _on_net_lost(reason: String) -> void:
+	if not _online_search:
+		return
+	_online_search = false
+	if _match_state == Match.SEARCHING:
+		toast("%s - playing against bots" % reason)
+		_match_needed = _match_elapsed + 2.0
 
 
 func _finish_match() -> void:
@@ -1288,6 +1320,20 @@ func _open_settings() -> void:
 	var account := _hbox(body, 16)
 	_action_button(account, "CHANGE CHARACTER", _change_character, false, 300)
 	_action_button(account, "TRAINING GROUND", _open_training, false, 300)
+	var srv_row := _hbox(body, 12)
+	var srv_label := _label(srv_row, "Server", 28, Color.WHITE, font_bold)
+	srv_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var srv := LineEdit.new()
+	srv.placeholder_text = "host:7777  (empty = online config / bots)"
+	srv.text = GameState.server_address
+	srv.custom_minimum_size = Vector2(0, 56)
+	srv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	srv.add_theme_font_size_override("font_size", 26)
+	srv.add_theme_stylebox_override("normal", _margins(_sb(Color(1, 1, 1, 0.08), 6, Color(1, 1, 1, 0.2), 1), 14, 6))
+	srv.add_theme_stylebox_override("focus", _margins(_sb(Color(1, 1, 1, 0.1), 6, GOLD, 2), 14, 6))
+	srv.text_submitted.connect(_set_server_address.bind(srv))
+	srv_row.add_child(srv)
+	_action_button(srv_row, "SAVE", _save_server_address.bind(srv), false, 140)
 	_action_button(account, "SIGN OUT", _sign_out, false, 220)
 	var who := "Guest" if GameState.auth_provider != "google" else "Google: %s" % GameState.account_email
 	var who_label := _label(account, who, 24, TEXT_DIM, font_medium)
@@ -1306,6 +1352,16 @@ func _open_settings() -> void:
 
 func _change_character() -> void:
 	SceneRouter.go("res://scenes/onboarding.tscn", "CHARACTER", "Choose who you play as")
+
+
+func _set_server_address(_text: String, field: LineEdit) -> void:
+	_save_server_address(field)
+
+
+func _save_server_address(field: LineEdit) -> void:
+	GameState.server_address = field.text.strip_edges()
+	GameState.save_state()
+	toast("Server: %s" % (GameState.server_address if GameState.server_address != "" else "automatic"))
 
 
 func _open_training() -> void:

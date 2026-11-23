@@ -10,7 +10,9 @@
       ".read": "auth != null",
       "$uid": {
         ".write": "auth != null && auth.uid === $uid",
-        "name": { ".validate": "newData.isString() && newData.val().length <= 32" }
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 32"
+        }
       }
     },
     "ids": {
@@ -32,7 +34,9 @@
     "requests": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        "$from": { ".write": "auth != null && (auth.uid === $from || auth.uid === $uid)" }
+        "$from": {
+          ".write": "auth != null && (auth.uid === $from || auth.uid === $uid)"
+        }
       }
     },
     "invites": {
@@ -50,6 +54,10 @@
           ".write": "auth != null && (auth.uid === $uid || (auth.uid === $from && root.child('invites').child($from).child($uid).exists()))"
         }
       }
+    },
+    "config": {
+      ".read": true,
+      ".write": false
     }
   }
 }

@@ -44,6 +44,20 @@ jobs:
           timeout 400 ./godot --headless --path AurumGodot --fixed-fps 60 res://tests/movement_test.tscn 2>&1 | tee movement.log || true
           grep "MOVEMENT TEST" movement.log || true
 
+      - name: Multiplayer test (dedicated server + 2 players)
+        run: |
+          ./godot --headless --path AurumGodot res://scenes/server.tscn -- --server --port=7777 --lobby-seconds=8 > server.log 2>&1 &
+          SRV=$!
+          sleep 4
+          timeout 330 ./godot --headless --path AurumGodot res://tests/net_test.tscn -- --name=Alpha --role=shooter > net_alpha.log 2>&1 &
+          A=$!
+          timeout 330 ./godot --headless --path AurumGodot res://tests/net_test.tscn -- --name=Bravo --role=victim > net_bravo.log 2>&1 &
+          B=$!
+          wait $A || true
+          wait $B || true
+          kill $SRV 2>/dev/null || true
+          grep -h "NET TEST\|AURUM SERVER" server.log net_alpha.log net_bravo.log || true
+
       - name: Smoke test - lobby with a realistic character chosen
         run: |
           d="$HOME/.local/share/godot/app_userdata/Aurum"
@@ -67,6 +81,7 @@ jobs:
           cat errors.txt
           if grep -qE "SCRIPT ERROR|Parse Error" errors.txt; then exit 1; fi
           if ! grep -q "MOVEMENT TEST: ALL PASSED" movement.log; then echo "Movement test did not pass"; exit 1; fi
+          if ! grep -q "NET TEST Alpha: PASS" net_alpha.log || ! grep -q "NET TEST Bravo: PASS" net_bravo.log; then echo "Multiplayer test did not pass"; exit 1; fi
 
       - uses: actions/upload-artifact@v4
         if: always()

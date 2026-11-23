@@ -36,6 +36,8 @@ var friends: Array = []
 ## [{uid, name, player_id}]
 var requests: Array = []
 var invites: Array = []
+## Multiplayer server announced in the database (config/server), "" if none.
+var server_host := ""
 
 var _id_token := ""
 var _refresh_token := ""
@@ -174,6 +176,7 @@ func _ensure_token() -> bool:
 
 func _after_sign_in() -> void:
 	last_error = ""
+	await _load_server_config()
 	await _ensure_player_id()
 	await _sync_save()
 	_online = true
@@ -201,6 +204,14 @@ func _ensure_player_id() -> void:
 			await _db("users/%s/player_id" % uid, HTTPClient.METHOD_PUT, player_id)
 			_save_store()
 			return
+
+
+## Reads config/server = {"host": "1.2.3.4", "port": 7777} (public, read-only).
+func _load_server_config() -> void:
+	var cfg: Variant = await _db_get("config/server")
+	if cfg is Dictionary and str((cfg as Dictionary).get("host", "")) != "":
+		var d: Dictionary = cfg
+		server_host = "%s:%d" % [str(d["host"]), int(d.get("port", 7777))]
 
 
 # --- Cloud save ----------------------------------------------------------------------------
