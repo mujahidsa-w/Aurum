@@ -160,7 +160,9 @@ func _spawn_bots(count: int) -> void:
 		b.display_name = str(BOT_NAMES[i % BOT_NAMES.size()])
 		var bc: Dictionary = CharacterDB.CHARACTERS[rng.randi() % CharacterDB.CHARACTERS.size()]
 		var bo: Dictionary = CharacterDB.OUTFITS[rng.randi() % CharacterDB.OUTFITS.size()]
-		b.setup_body(Color.from_hsv(rng.randf(), 0.6, 0.7), BotScript.LAYER_BOT, str(bc["id"]), str(bo["id"]))
+		# The headless server never draws anyone: a light body saves memory on small VMs.
+		var body_id := "" if Net.is_server else str(bc["id"])
+		b.setup_body(Color.from_hsv(rng.randf(), 0.6, 0.7), BotScript.LAYER_BOT, body_id, str(bo["id"]))
 		b.ballistics = ballistics
 		b.battle = self
 		b.skill = rng.randf_range(0.25, 0.8)
@@ -430,7 +432,10 @@ func _make_puppet(id: int, display: String, character_id: String, outfit: String
 	p.display_name = display
 	p.net_id = id
 	p.set_meta("net_id", id)
-	p.setup_body(Color.from_hsv(randf(), 0.6, 0.7), RemoteCombatant.LAYER_BOT, character_id if character_id != "" else "soldier", outfit)
+	var body_id := character_id if character_id != "" else "soldier"
+	if Net.is_server:
+		body_id = ""
+	p.setup_body(Color.from_hsv(randf(), 0.6, 0.7), RemoteCombatant.LAYER_BOT, body_id, outfit)
 	p.ballistics = ballistics
 	p.position = Vector3(0, -500, 0)
 	add_child(p)

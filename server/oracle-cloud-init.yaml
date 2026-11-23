@@ -1,0 +1,6 @@
+#cloud-config
+# Oracle Cloud (or any provider with cloud-init): paste this in
+#   Create compute instance -> Show advanced options -> Management -> Paste cloud-init script
+# The VM installs and starts the Aurum server by itself. Log: /var/log/aurum-install.log
+runcmd:
+  - [bash, -c, "curl -fsSL https://raw.githubusercontent.com/mujahidsa-w/Aurum/claude/awesome-planck-jiaods/server/install.sh | bash > /var/log/aurum-install.log 2>&1"]

@@ -1,0 +1,49 @@
+name: Aurum server installer (x86 + ARM)
+
+# Runs server/install.sh on clean Ubuntu machines exactly like a free VM would (x86_64 and
+# arm64 = Oracle Always Free Ampere), then plays a 2-player match against the installed
+# service and reports the server's memory use.
+on:
+  push:
+    branches: ["claude/**"]
+    paths: ["server/**", "AurumGodot/scripts/net/**", ".github/workflows/server-install.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the installer (as on a fresh VM)
+        run: sudo AURUM_BRANCH="${GITHUB_REF_NAME}" AURUM_LOBBY_SECONDS=8 bash server/install.sh
+
+      - name: Service is up and listening on UDP 7777
+        run: |
+          systemctl is-active aurum-server
+          sudo ss -ulpn | grep 7777
+          sudo journalctl -u aurum-server --no-pager | grep "AURUM SERVER"
+
+      - name: Two players play a match on the installed server
+        run: |
+          G=$(ls /opt/aurum/godot-*)
+          P=/opt/aurum/Aurum/AurumGodot
+          sudo -u aurum HOME=/opt/aurum timeout 330 $G --headless --path $P res://tests/net_test.tscn -- --name=Alpha --role=shooter > alpha.log 2>&1 &
+          A=$!
+          sudo -u aurum HOME=/opt/aurum timeout 330 $G --headless --path $P res://tests/net_test.tscn -- --name=Bravo --role=victim > bravo.log 2>&1 &
+          B=$!
+          wait $A || true
+          wait $B || true
+          grep -h "NET TEST" alpha.log bravo.log || true
+          sudo journalctl -u aurum-server --no-pager | grep "AURUM SERVER" | tail -12
+          PID=$(systemctl show -p MainPID --value aurum-server)
+          echo "Server memory: $(grep -E 'VmHWM|VmRSS' /proc/$PID/status | tr -s ' ' | tr '\n' ' ')"
+          grep -q "NET TEST Alpha: PASS" alpha.log && grep -q "NET TEST Bravo: PASS" bravo.log
