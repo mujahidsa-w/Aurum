@@ -221,6 +221,8 @@ func _on_peer_disconnected(id: int) -> void:
 	if not is_server:
 		return
 	_waiting.erase(id)
+	# Stop addressing the departed peer before the battleground reacts to the departure.
+	roster.erase(id)
 	if _phase == "waiting":
 		if _waiting.is_empty():
 			_countdown = -1.0
