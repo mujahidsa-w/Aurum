@@ -55,9 +55,18 @@ variants generated from the original textures.
 | Sophia | Sophia Animated 003 - Animated 3D Woman | Renderpeople | https://sketchfab.com/3d-models/sophia-animated-003-animated-3d-woman-dc448c3be0e74f96a55fb475a13433cf |
 | Carla | Carla Rigged 001 - Rigged 3D Business Woman | Renderpeople | https://sketchfab.com/3d-models/carla-rigged-001-rigged-3d-business-woman-acf520f450d14dd799f98a6fede3edf5 |
 | Claudia | Claudia Rigged 002 - 3D Rigged Business Woman | Renderpeople | https://sketchfab.com/3d-models/claudia-rigged-002-3d-rigged-business-woman-c659bd0accab47c6bbe390cf822a2b92 |
-| Ranger + all animations | Game Ready Military Character | Pure Gamer Studios | https://sketchfab.com/3d-models/game-ready-military-character-8cd04f8d8ca94f7fb911fef2d3802f13 |
+| Ranger + base animations (idle, walk, run, rifle, pistol, jump) | Game Ready Military Character | Pure Gamer Studios | https://sketchfab.com/3d-models/game-ready-military-character-8cd04f8d8ca94f7fb911fef2d3802f13 |
+| Crouch, prone, crawl, stance changes, reloads, deaths, sprint | Modern Army Soldier | abdlilah ben | https://sketchfab.com/models/37566d930fa7404f87847b7fca8dca97 |
+| Headshot death, grenade throw, firing while standing/walking | Tactical Soldier | MissingTray1151 | https://sketchfab.com/models/2bfce585144d4403a3ddf76a0e65767a |
+
+All animations were retargeted onto every character (32 clips per character).
 
 License: https://creativecommons.org/licenses/by/4.0/
+
+## Online services
+
+- Accounts, cloud saves, player IDs and friends: Firebase Authentication + Realtime Database (Google).
+- Connection test on the startup screen: speed.cloudflare.com (download test), www.gstatic.com (latency fallback).
 
 ## Fonts
 

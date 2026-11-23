@@ -115,6 +115,7 @@ func _on_token(result: int, code: int, _headers: PackedStringArray, body: Packed
 			"email": str(claims.get("email", "")),
 			"name": str(claims.get("name", claims.get("given_name", ""))),
 			"picture": str(claims.get("picture", "")),
+			"id_token": str(d["id_token"]),
 		})
 		return
 	match str(d.get("error", "")):

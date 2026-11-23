@@ -36,8 +36,13 @@ jobs:
       - name: Smoke test - lobby
         run: timeout 300 ./godot --headless --path AurumGodot --quit-after 900 res://scenes/lobby.tscn 2>&1 | tee lobby.log || true
 
-      - name: Smoke test - first launch (boot -> onboarding)
-        run: timeout 300 ./godot --headless --path AurumGodot --quit-after 600 2>&1 | tee boot.log || true
+      - name: Smoke test - first launch (studio splash -> startup loader -> sign-in)
+        run: timeout 300 ./godot --headless --path AurumGodot --quit-after 1800 2>&1 | tee boot.log || true
+
+      - name: Movement test (stances, sprint, jump, crouch tunnel, prone wire)
+        run: |
+          timeout 400 ./godot --headless --path AurumGodot --fixed-fps 60 res://tests/movement_test.tscn 2>&1 | tee movement.log || true
+          grep "MOVEMENT TEST" movement.log || true
 
       - name: Smoke test - lobby with a realistic character chosen
         run: |
@@ -61,6 +66,7 @@ jobs:
           echo "==== errors ($(wc -l < errors.txt)) ===="
           cat errors.txt
           if grep -qE "SCRIPT ERROR|Parse Error" errors.txt; then exit 1; fi
+          if ! grep -q "MOVEMENT TEST: ALL PASSED" movement.log; then echo "Movement test did not pass"; exit 1; fi
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -74,6 +74,7 @@ func _setup_input() -> void:
 	_bind("jump", [KEY_SPACE])
 	_bind("sprint", [KEY_SHIFT])
 	_bind("crouch", [KEY_C, KEY_CTRL])
+	_bind("prone", [KEY_Z])
 	_bind("reload", [KEY_R])
 	_bind("interact", [KEY_F, KEY_E])
 	_bind("switch_weapon", [KEY_Q, KEY_1, KEY_2])
@@ -281,4 +282,5 @@ func _end_match(won: bool) -> void:
 
 func return_to_lobby() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	get_tree().change_scene_to_file("res://scenes/lobby.tscn")
+	Online.push_save()
+	SceneRouter.go("res://scenes/lobby.tscn", "LOBBY", "Back to base")

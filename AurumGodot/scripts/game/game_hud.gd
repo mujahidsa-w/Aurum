@@ -13,12 +13,19 @@ const EXTRA_ICONS := {
 	"scope": "<circle cx='32' cy='32' r='22' fill='none' stroke='#FFFFFF' stroke-width='5'/><circle cx='32' cy='32' r='4' fill='#FFFFFF'/>",
 	"reload": "<path d='M50 22 A20 20 0 1 0 52 38' fill='none' stroke='#FFFFFF' stroke-width='6' stroke-linecap='round'/><path d='M40 18 H54 V4' fill='none' stroke='#FFFFFF' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/>",
 	"jump": "<path d='M14 40 L32 20 L50 40' fill='none' stroke='#FFFFFF' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/>",
-	"crouch": "<path d='M14 24 L32 44 L50 24' fill='none' stroke='#FFFFFF' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/>",
+	"crouch": "<circle cx='36' cy='12' r='6' fill='#FFFFFF'/><path d='M34 20 L26 34 L38 40 L36 56 M26 34 L18 46 M30 26 L44 30' fill='none' stroke='#FFFFFF' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/>",
+	"prone": "<circle cx='50' cy='34' r='6' fill='#FFFFFF'/><path d='M8 46 H42 M20 46 L30 38 H44 M44 38 L54 44' fill='none' stroke='#FFFFFF' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/>",
 	"grab": "<path d='M18 34 V20 M26 32 V14 M34 32 V14 M42 34 V20 M16 34 C16 50 24 56 32 56 C42 56 48 48 48 36 V28' fill='none' stroke='#FFFFFF' stroke-width='5' stroke-linecap='round'/>",
 	"swap": "<path d='M12 22 H50 L40 12 M52 42 H14 L24 52' fill='none' stroke='#FFFFFF' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/>",
 	"medkit": "<rect x='10' y='16' width='44' height='34' rx='5' fill='none' stroke='#FFFFFF' stroke-width='5'/><path d='M32 22 V44 M21 33 H43' stroke='#FF5555' stroke-width='7' stroke-linecap='round'/>",
 	"mode": "<circle cx='20' cy='32' r='6' fill='#FFFFFF'/><circle cx='32' cy='32' r='6' fill='#FFFFFF'/><circle cx='44' cy='32' r='6' fill='#FFFFFF' opacity='0.5'/>",
 	"sprint": "<path d='M14 46 L28 32 L20 24 M34 16 L44 26 L54 22 M28 32 L38 40 L36 54' fill='none' stroke='#FFFFFF' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/><circle cx='40' cy='10' r='5' fill='#FFFFFF'/>",
+}
+
+const STANCE_ICONS := {
+	"stand": "<circle cx='32' cy='9' r='6' fill='#FFFFFF'/><path d='M32 17 V38 M32 38 L25 58 M32 38 L39 58 M32 22 L22 34 M32 22 L42 30' fill='none' stroke='#FFFFFF' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/>",
+	"crouch": "<circle cx='34' cy='20' r='6' fill='#FFFFFF'/><path d='M32 28 L28 42 L40 46 L38 58 M28 42 L20 58 M31 31 L44 36' fill='none' stroke='#FFFFFF' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/>",
+	"prone": "<circle cx='52' cy='42' r='6' fill='#FFFFFF'/><path d='M6 52 H44 M18 52 L28 46 H46 M46 46 L56 50' fill='none' stroke='#FFFFFF' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/>",
 }
 
 var player: Node
@@ -49,6 +56,8 @@ var _top_left: Label
 var _compass: Label
 var _zone_label: Label
 var _health_bar: ProgressBar
+var _stance_icon: TextureRect
+var _stance_textures := {}
 var _health_label: Label
 var _med_label: Label
 var _weapon_label: Label
@@ -235,6 +244,16 @@ func _build() -> void:
 	_anchor(_health_bar, 0.5, 1, -260, -64, 520, 18)
 	_health_label = _label("100", 24)
 	_anchor(_health_label, 0.5, 1, 270, -74, 80, 34)
+	# Posture indicator (standing / crouching / prone) left of the health bar.
+	for k in ["stand", "crouch", "prone"]:
+		var body: String = STANCE_ICONS[k]
+		_stance_textures[k] = Icons.svg_texture(Icons.HEAD + body + Icons.TAIL, 1.0)
+	_stance_icon = TextureRect.new()
+	_stance_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stance_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_stance_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_stance_icon.modulate = Color(1, 1, 1, 0.85)
+	_anchor(_stance_icon, 0.5, 1, -340, -96, 64, 64)
 	_med_label = _label("", 24, Color(1.0, 0.6, 0.6))
 	_anchor(_med_label, 0.5, 1, -260, -104, 520, 34)
 
@@ -287,11 +306,13 @@ func _build() -> void:
 	_anchor(_chute_label, 0.5, 0.5, -400, -150, 800, 80)
 
 	if not _touch:
-		_hint = _label("WASD move  ·  Shift sprint  ·  C crouch  ·  Space jump / parachute  ·  RMB aim  ·  R reload  ·  F pick up  ·  Q swap  ·  B fire mode  ·  H heal  ·  Esc menu", 20, Color(1, 1, 1, 0.55))
+		_hint = _label("WASD move  ·  Shift sprint  ·  C crouch  ·  Z prone  ·  Alt walk  ·  Space jump / parachute  ·  RMB aim  ·  R reload  ·  F pick up  ·  Q swap  ·  B fire mode  ·  H heal  ·  Esc menu", 20, Color(1, 1, 1, 0.55))
 		_anchor(_hint, 0, 1, 24, -36, 1600, 30)
 	else:
 		_build_touch()
-	_build_loading()
+	# The global loading screen covers the match while it builds; standalone runs get their own.
+	if not SceneRouter.is_loading():
+		_build_loading()
 
 
 # --- Touch controls -------------------------------------------------------------------------
@@ -340,6 +361,7 @@ func _layout_touch_buttons() -> void:
 	_touch_button("reload", Vector2(r - 120, bottom - 410), 50.0, _call_player.bind("start_reload"))
 	_touch_button("jump", Vector2(r - 330, bottom - 130), 52.0, _call_player.bind("jump_or_open_chute"))
 	_touch_button("crouch", Vector2(r - 460, bottom - 90), 46.0, _toggle_crouch)
+	_touch_button("prone", Vector2(r - 580, bottom - 70), 44.0, _call_player.bind("toggle_prone"))
 	_touch_button("grab", Vector2(s.x * 0.5 + 160, s.y * 0.5 + 110), 46.0, _call_player.bind("interact"))
 	_touch_button("swap", Vector2(r - 120, bottom - 530), 44.0, _call_player.bind("switch_slot"))
 	_touch_button("mode", Vector2(r - 240, bottom - 520), 40.0, _call_player.bind("cycle_fire_mode"))
@@ -361,8 +383,8 @@ func _toggle_aim() -> void:
 
 
 func _toggle_crouch() -> void:
-	if player:
-		player.set("crouching", not bool(player.get("crouching")))
+	if player and player.has_method("toggle_crouch"):
+		player.call("toggle_crouch")
 
 
 func _toggle_sprint() -> void:
@@ -488,7 +510,7 @@ func _leave() -> void:
 		battle.call("return_to_lobby")
 
 
-func show_end(title: String, sub: String) -> void:
+func show_end(title: String, sub: String, allow_continue: bool = false) -> void:
 	if _end:
 		return
 	if _menu:
@@ -498,6 +520,16 @@ func show_end(title: String, sub: String) -> void:
 	fire_held = false
 	_end = _panel(title, sub)
 	_menu_button(_end, "BACK TO LOBBY", _leave)
+	if allow_continue:
+		_menu_button(_end, "KEEP PRACTICING", _keep_playing)
+
+
+func _keep_playing() -> void:
+	if _end:
+		_end.queue_free()
+		_end = null
+	if not DisplayServer.is_touchscreen_available():
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 # --- Loading ----------------------------------------------------------------------------
@@ -536,11 +568,17 @@ func _build_loading() -> void:
 
 
 func set_loading(progress: float, text: String) -> void:
+	if _loading == null:
+		SceneRouter.report(progress, text)
+		return
 	_loading_bar.value = progress
 	_loading_label.text = text + "..."
 
 
 func hide_loading() -> void:
+	if _loading == null:
+		SceneRouter.finish()
+		return
 	var tw := create_tween()
 	tw.tween_property(_loading, "modulate:a", 0.0, 0.6)
 	tw.tween_callback(_loading.queue_free)
@@ -593,6 +631,8 @@ func _process(delta: float) -> void:
 	_map.visible = show_map
 	if show_map:
 		_map.queue_redraw()
+	var st := int(p.get("stance")) if p.get("stance") != null else 0
+	_stance_icon.texture = _stance_textures[["stand", "crouch", "prone"][clampi(st, 0, 2)]]
 	var hp := float(p.get("health"))
 	_health_bar.value = hp
 	_health_label.text = str(int(ceil(hp)))

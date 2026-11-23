@@ -10,6 +10,8 @@ signal region_changed
 signal outfit_changed
 signal missions_changed
 signal squad_changed
+## Emitted after progress is written to disk (the online service uploads it).
+signal saved
 
 const SAVE_PATH := "user://aurum_save.cfg"
 
@@ -69,6 +71,12 @@ var character_id := ""       # chosen realistic character (see character_db.gd)
 var outfit_id := "original"
 var trained := false
 var equipped_weapon := "m4a1"
+## Result of the connection test on the startup screen.
+## Unix time of the last change, used to pick the newest copy between device and cloud.
+var updated_at := 0
+var net_online := false
+var net_mbps := 0.0
+var net_ping_ms := 0.0
 
 const SQUAD_SLOTS := 3
 
@@ -267,6 +275,15 @@ static func is_valid_name(text: String) -> bool:
 	return re.search(text) != null
 
 
+## Where the game continues after the startup screen.
+func entry_scene() -> String:
+	if auth_provider == "" or character_id == "":
+		return "res://scenes/onboarding.tscn"
+	if not trained:
+		return "res://scenes/training.tscn"
+	return "res://scenes/lobby.tscn"
+
+
 func sign_out() -> void:
 	auth_provider = ""
 	account_email = ""
@@ -277,7 +294,45 @@ func sign_out() -> void:
 # --- Persistence ----------------------------------------------------------
 
 func save_state() -> void:
+	updated_at = int(Time.get_unix_time_from_system())
+	var cfg := _to_cfg()
+	cfg.save(SAVE_PATH)
+	saved.emit()
+
+
+## Progress as a plain dictionary {section: {key: value}} for the cloud save.
+func export_save() -> Dictionary:
+	var cfg := _to_cfg()
+	var out := {}
+	for section in cfg.get_sections():
+		if section == "account":
+			continue
+		var d := {}
+		for key in cfg.get_section_keys(section):
+			d[key] = cfg.get_value(section, key)
+		out[section] = d
+	return out
+
+
+## Applies a cloud save (keeps this device's sign-in details).
+func import_save(data: Dictionary) -> void:
+	var cfg := _to_cfg()
+	for section in data.keys():
+		if str(section) == "account" or not (data[section] is Dictionary):
+			continue
+		var d: Dictionary = data[section]
+		for key in d.keys():
+			cfg.set_value(str(section), str(key), d[key])
+	_apply_cfg(cfg)
+	cfg.save(SAVE_PATH)
+	currency_changed.emit()
+	outfit_changed.emit()
+	squad_changed.emit()
+
+
+func _to_cfg() -> ConfigFile:
 	var cfg := ConfigFile.new()
+	cfg.set_value("meta", "updated_at", updated_at)
 	cfg.set_value("player", "gold", gold)
 	cfg.set_value("player", "credits", credits)
 	cfg.set_value("lobby", "mode_index", mode_index)
@@ -309,13 +364,18 @@ func save_state() -> void:
 	for m in missions:
 		claimed.append(bool(m["claimed"]))
 	cfg.set_value("missions", "claimed", claimed)
-	cfg.save(SAVE_PATH)
+	return cfg
 
 
 func load_state() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
 		return
+	_apply_cfg(cfg)
+
+
+func _apply_cfg(cfg: ConfigFile) -> void:
+	updated_at = int(cfg.get_value("meta", "updated_at", 0))
 	gold = int(cfg.get_value("player", "gold", gold))
 	credits = int(cfg.get_value("player", "credits", credits))
 	mode_index = clampi(int(cfg.get_value("lobby", "mode_index", mode_index)), 0, MODES.size() - 1)
@@ -330,8 +390,8 @@ func load_state() -> void:
 	outfit_index = int(cfg.get_value("outfit", "outfit_index", outfit_index))
 	rifle_skin_index = int(cfg.get_value("outfit", "rifle_skin_index", rifle_skin_index))
 	clan_name = str(cfg.get_value("social", "clan_name", clan_name))
-	joined_events = cfg.get_value("social", "joined_events", [])
-	installed_packs = cfg.get_value("settings", "installed_packs", [])
+	joined_events = _as_array(cfg.get_value("social", "joined_events", []))
+	installed_packs = _as_array(cfg.get_value("settings", "installed_packs", []))
 	workshop_notify = bool(cfg.get_value("settings", "workshop_notify", workshop_notify))
 	fullscreen = bool(cfg.get_value("settings", "fullscreen", fullscreen))
 	season_claimed = bool(cfg.get_value("player", "season_claimed", season_claimed))
@@ -343,6 +403,14 @@ func load_state() -> void:
 	outfit_id = str(cfg.get_value("player", "outfit_id", outfit_id))
 	trained = bool(cfg.get_value("player", "trained", trained))
 	equipped_weapon = str(cfg.get_value("player", "equipped_weapon", equipped_weapon))
-	var claimed: Array = cfg.get_value("missions", "claimed", [])
+	var claimed := _as_array(cfg.get_value("missions", "claimed", []))
 	for i in mini(claimed.size(), missions.size()):
 		missions[i]["claimed"] = bool(claimed[i])
+
+
+static func _as_array(v: Variant) -> Array:
+	if v is Array:
+		return v
+	if v is Dictionary:
+		return (v as Dictionary).values()
+	return []

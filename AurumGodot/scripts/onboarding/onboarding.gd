@@ -306,7 +306,18 @@ func _on_signed_in(profile: Dictionary) -> void:
 	GameState.auth_provider = "google"
 	GameState.account_email = str(profile.get("email", ""))
 	GameState.account_name = str(profile.get("name", ""))
+	if _status:
+		_status.text = "Signed in. Restoring your progress from the cloud..."
+	# Link the Google account to the online services and restore any saved progress.
+	await Online.sign_in_google(str(profile.get("id_token", "")))
+	GameState.auth_provider = "google"
+	GameState.account_email = str(profile.get("email", ""))
+	GameState.account_name = str(profile.get("name", ""))
 	GameState.save_state()
+	if GameState.character_id != "" and GameState.player_name != "" and GameState.trained:
+		# Returning player on a new device: everything was restored.
+		SceneRouter.go(GameState.entry_scene(), "WELCOME BACK", GameState.player_name)
+		return
 	_go(Step.CHARACTER)
 
 
@@ -326,6 +337,7 @@ func _guest() -> void:
 	_auth.cancel()
 	GameState.auth_provider = "guest"
 	GameState.save_state()
+	Online.sign_in_guest()
 	_go(Step.CHARACTER)
 
 
@@ -508,4 +520,8 @@ func _finish() -> void:
 	GameState.character_id = _character
 	GameState.outfit_id = _outfit
 	GameState.save_state()
-	get_tree().change_scene_to_file("res://scenes/training.tscn" if not GameState.trained else "res://scenes/lobby.tscn")
+	Online.push_save()
+	if GameState.trained:
+		SceneRouter.go("res://scenes/lobby.tscn", "LOBBY", "Welcome back, %s" % player_name)
+	else:
+		SceneRouter.go("res://scenes/training.tscn", "TRAINING GROUND", "Learn to move, loot and shoot")

@@ -1,5 +1,5 @@
 extends Node
-## First scene: sends the player to sign-in / character creation, training, or the lobby.
+## Legacy entry point (kept for tools/tests): routes like the startup screen does.
 
 
 func _ready() -> void:
@@ -7,9 +7,4 @@ func _ready() -> void:
 
 
 func _route() -> void:
-	var target := "res://scenes/lobby.tscn"
-	if GameState.auth_provider == "" or GameState.character_id == "":
-		target = "res://scenes/onboarding.tscn"
-	elif not GameState.trained:
-		target = "res://scenes/training.tscn"
-	get_tree().change_scene_to_file(target)
+	get_tree().change_scene_to_file(GameState.entry_scene())

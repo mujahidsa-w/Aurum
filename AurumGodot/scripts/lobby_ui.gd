@@ -43,6 +43,9 @@ var font_heavy: Font
 var _gold_label: Label
 var _credits_label: Label
 var _friends_label: Label
+var _friends_body: Control
+var _friends_list: VBoxContainer
+var _id_label: Label
 var _mode_card: Button
 var _mode_title: Label
 var _mode_sub: Label
@@ -96,6 +99,10 @@ func _ready() -> void:
 	th.default_font_size = 28
 	theme = th
 
+	Online.friends_changed.connect(_on_online_changed)
+	Online.requests_changed.connect(_on_online_changed)
+	Online.invites_changed.connect(_on_online_changed)
+	Online.status_changed.connect(_on_online_changed)
 	_make_portrait()
 	_build_shading()
 	_build_profile()
@@ -411,6 +418,8 @@ func _build_profile() -> void:
 	_label(lvl_row, "Lv. %d" % GameState.level, 29, Color.WHITE, font_medium)
 	var bar := _progress(lvl_row, GameState.xp_ratio, 128, 9)
 	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_id_label = _label(self, "ID %s" % Online.player_id if Online.player_id != "" else "", 22, Color(1, 1, 1, 0.6), font_medium)
+	_place(_id_label, 116, 94, 260, 26)
 
 
 func _progress(parent: Control, ratio: float, width: float, height: float = 12.0) -> ProgressBar:
@@ -436,7 +445,7 @@ func _build_squad() -> void:
 	_place(panel, 12, 110, 262, 102)
 	var head := _icon(panel, "person", 20, Color(1, 1, 1, 0.85))
 	head.position = Vector2(10, 8)
-	_friends_label = _label(panel, "%d/%d" % [GameState.friends_online, GameState.friends_total], 25, Color(1, 1, 1, 0.9), font_medium)
+	_friends_label = _label(panel, "%d/%d" % [Online.friends_online_count(), Online.friends.size()], 25, Color(1, 1, 1, 0.9), font_medium)
 	_friends_label.position = Vector2(34, 1)
 	for i in 4:
 		var slot := _button(panel, _sb(Color(1, 1, 1, 0.07), 3, Color(1, 1, 1, 0.18), 1), _sb(Color(1, 1, 1, 0.16), 3, Color(1, 1, 1, 0.4), 1))
@@ -487,7 +496,7 @@ func _build_find_teammates() -> void:
 	_place(b, 12, 322, 262, 56)
 	var ic := _icon(b, "flag", 36)
 	ic.position = Vector2(12, 10)
-	var l := _label(b, "Find Teammates", 31, Color.WHITE, font_bold)
+	var l := _label(b, "Friends", 31, Color.WHITE, font_bold)
 	l.position = Vector2(58, 7)
 	b.pressed.connect(_open_find_teammates)
 
@@ -809,7 +818,7 @@ func _refresh_squad() -> void:
 			_slot_buttons[i].add_theme_stylebox_override("normal", _sb(Color(1.0, 0.78, 0.1, 0.18), 3, GOLD, 2))
 		else:
 			_slot_buttons[i].add_theme_stylebox_override("normal", _sb(Color(1, 1, 1, 0.07), 3, Color(1, 1, 1, 0.18), 1))
-	_friends_label.text = "%d/%d" % [GameState.squad_members.size(), GameState.friends_total]
+	_friends_label.text = "%d/%d" % [Online.friends_online_count(), Online.friends.size()]
 
 
 func _on_squad_slot(index: int) -> void:
@@ -959,8 +968,8 @@ func _on_match_found() -> void:
 
 
 func _finish_match() -> void:
-	# Load the real battleground (Vis Island).
-	get_tree().change_scene_to_file("res://scenes/battleground.tscn")
+	# Load the real battleground (Vis Island) behind the match loading screen.
+	SceneRouter.go("res://scenes/battleground.tscn", "VIS ISLAND", "Croatia  ·  real terrain, streets and buildings", true)
 
 
 # =============================================================================
@@ -1278,6 +1287,7 @@ func _open_settings() -> void:
 	fps_toggle.toggled.connect(_set_show_fps)
 	var account := _hbox(body, 16)
 	_action_button(account, "CHANGE CHARACTER", _change_character, false, 300)
+	_action_button(account, "TRAINING GROUND", _open_training, false, 300)
 	_action_button(account, "SIGN OUT", _sign_out, false, 220)
 	var who := "Guest" if GameState.auth_provider != "google" else "Google: %s" % GameState.account_email
 	var who_label := _label(account, who, 24, TEXT_DIM, font_medium)
@@ -1295,12 +1305,17 @@ func _open_settings() -> void:
 
 
 func _change_character() -> void:
-	get_tree().change_scene_to_file("res://scenes/onboarding.tscn")
+	SceneRouter.go("res://scenes/onboarding.tscn", "CHARACTER", "Choose who you play as")
+
+
+func _open_training() -> void:
+	SceneRouter.go("res://scenes/training.tscn", "TRAINING GROUND", "Movement course  ·  armory  ·  shooting range")
 
 
 func _sign_out() -> void:
+	Online.sign_out()
 	GameState.sign_out()
-	get_tree().change_scene_to_file("res://scenes/onboarding.tscn")
+	SceneRouter.go("res://scenes/onboarding.tscn", "AURUM", "Sign in")
 
 
 func _set_show_fps(on: bool) -> void:
@@ -1672,43 +1687,167 @@ func _join_event(event_name: String, button: Button) -> void:
 
 
 func _open_find_teammates() -> void:
-	var body := _open_modal("Find Teammates", 940, 620)
-	_label(body, "Players looking for a squad in %s:" % GameState.region_name(), 28, TEXT_DIM, font_medium)
-	var players := [["Rania", 64, "Classic - Ranked"], ["Omar", 81, "Classic - Ranked"], ["Mina", 47, "Arcade"], ["Leo", 70, "Arena"]]
-	for p in players:
-		var card := _card(body)
-		var hb := _hbox(card, 18)
-		var ic := _icon(hb, "person", 44)
-		ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var vb := VBoxContainer.new()
-		vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		vb.add_theme_constant_override("separation", -4)
-		hb.add_child(vb)
-		_label(vb, str(p[0]), 32, Color.WHITE, font_bold)
-		_label(vb, "Lv. %d   ·   %s" % [int(p[1]), str(p[2])], 24, TEXT_DIM, font_medium)
-		var who := str(p[0])
-		var in_squad := GameState.squad_members.has(who)
-		var inv := _action_button(hb, "IN SQUAD" if in_squad else "INVITE", _noop, not in_squad, 170)
-		inv.disabled = in_squad
-		inv.pressed.connect(_invite_player.bind(who, inv))
-		inv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_open_friends()
 
 
-func _invite_player(who: String, button: Button) -> void:
+## Friends: your player ID, add a friend by ID, friend requests, squad invites and the
+## friends list with presence. Data comes from the Online autoload (Firebase).
+func _open_friends() -> void:
+	var body := _open_modal("Friends", 1100, 760)
+	_friends_body = body
+	var top := _hbox(body, 18)
+	var id_text := "Your ID:  %s" % (Online.player_id if Online.player_id != "" else "--------")
+	var id_label := _label(top, id_text, 34, GOLD, font_bold)
+	id_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var copy := _action_button(top, "COPY ID", _copy_player_id, false, 170)
+	copy.disabled = Online.player_id == ""
+	var status := _label(top, Online.status_text(), 26, Color(0.4, 0.9, 0.45) if Online.is_online() else Color(1.0, 0.45, 0.4), font_medium)
+	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var add_row := _hbox(body, 12)
+	var input := LineEdit.new()
+	input.placeholder_text = "Friend's player ID (8 digits)"
+	input.max_length = 8
+	input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+	input.custom_minimum_size = Vector2(0, 62)
+	input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	input.add_theme_font_size_override("font_size", 30)
+	input.add_theme_stylebox_override("normal", _margins(_sb(Color(1, 1, 1, 0.08), 6, Color(1, 1, 1, 0.2), 1), 16, 6))
+	input.add_theme_stylebox_override("focus", _margins(_sb(Color(1, 1, 1, 0.1), 6, GOLD, 2), 16, 6))
+	add_row.add_child(input)
+	var add := _action_button(add_row, "ADD FRIEND", _noop, true, 240)
+	add.pressed.connect(_send_friend_request.bind(input, add))
+	add.disabled = not Online.is_online()
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	body.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 10)
+	scroll.add_child(list)
+	_friends_list = list
+	_fill_friends_list()
+	Online.poll()
+
+
+func _fill_friends_list() -> void:
+	if not is_instance_valid(_friends_list):
+		return
+	for c in _friends_list.get_children():
+		c.queue_free()
+	var list := _friends_list
+	if not Online.is_online():
+		var off := _label(list, "Friends need an internet connection and an online account. Your progress is still saved on this device and uploads when you are back online.", 28, TEXT_DIM, font_medium)
+		off.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		return
+	if not Online.invites.is_empty():
+		_label(list, "SQUAD INVITES", 26, GOLD, font_bold)
+		for inv in Online.invites:
+			var hb := _friend_row(list, str(inv["name"]), "ID %s  ·  invited you to their squad" % str(inv["player_id"]), true)
+			_small_action(hb, "JOIN", _accept_invite.bind(str(inv["uid"]), str(inv["name"])), true)
+			_small_action(hb, "IGNORE", _decline_invite.bind(str(inv["uid"])), false)
+	if not Online.requests.is_empty():
+		_label(list, "FRIEND REQUESTS", 26, GOLD, font_bold)
+		for rq in Online.requests:
+			var hb := _friend_row(list, str(rq["name"]), "ID %s" % str(rq["player_id"]), false)
+			_small_action(hb, "ACCEPT", _accept_request.bind(str(rq["uid"])), true)
+			_small_action(hb, "DECLINE", _decline_request.bind(str(rq["uid"])), false)
+	_label(list, "FRIENDS  ·  %d online / %d" % [Online.friends_online_count(), Online.friends.size()], 26, GOLD, font_bold)
+	if Online.friends.is_empty():
+		var hint := _label(list, "No friends yet. Share your ID or enter a friend's ID above.", 28, TEXT_DIM, font_medium)
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	for f in Online.friends:
+		var info := "Lv. %d  ·  ID %s  ·  %s" % [int(f["level"]), str(f["player_id"]), Online.last_seen_text(f)]
+		var hb := _friend_row(list, str(f["name"]), info, bool(f["online"]))
+		var in_squad := GameState.squad_members.has(str(f["name"]))
+		var inv_b := _small_action(hb, "IN SQUAD" if in_squad else "INVITE", _invite_friend.bind(str(f["uid"]), str(f["name"])), not in_squad)
+		inv_b.disabled = in_squad
+		_small_action(hb, "REMOVE", _remove_friend.bind(str(f["uid"]), str(f["name"])), false)
+
+
+func _friend_row(parent: Control, title: String, info: String, online: bool) -> HBoxContainer:
+	var card := _card(parent)
+	var hb := _hbox(card, 16)
+	var dot := ColorRect.new()
+	dot.custom_minimum_size = Vector2(14, 14)
+	dot.color = Color(0.35, 0.9, 0.4) if online else Color(1, 1, 1, 0.25)
+	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hb.add_child(dot)
+	var ic := _icon(hb, "person", 44)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var vb := VBoxContainer.new()
+	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.add_theme_constant_override("separation", -4)
+	hb.add_child(vb)
+	_label(vb, title, 32, Color.WHITE, font_bold)
+	_label(vb, info, 24, TEXT_DIM, font_medium)
+	return hb
+
+
+func _small_action(parent: Control, text: String, action: Callable, primary: bool) -> Button:
+	var b := _action_button(parent, text, action, primary, 150)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return b
+
+
+func _copy_player_id() -> void:
+	DisplayServer.clipboard_set(Online.player_id)
+	toast("ID %s copied" % Online.player_id)
+
+
+func _send_friend_request(input: LineEdit, button: Button) -> void:
+	button.disabled = true
+	var err: String = await Online.send_friend_request(input.text)
+	if is_instance_valid(button):
+		button.disabled = false
+	if err == "":
+		toast("Friend request sent")
+		if is_instance_valid(input):
+			input.text = ""
+	else:
+		toast(err)
+
+
+func _accept_request(from_uid: String) -> void:
+	if await Online.accept_request(from_uid):
+		toast("Friend added")
+
+
+func _decline_request(from_uid: String) -> void:
+	await Online.decline_request(from_uid)
+
+
+func _remove_friend(friend_uid: String, friend_name: String) -> void:
+	await Online.remove_friend(friend_uid)
+	toast("%s removed from friends" % friend_name)
+
+
+func _invite_friend(friend_uid: String, friend_name: String) -> void:
 	if GameState.squad_members.size() >= GameState.SQUAD_SLOTS:
 		toast("Your squad is full")
 		return
-	button.disabled = true
-	button.text = "SENT"
-	toast("Invite sent to %s" % who)
-	get_tree().create_timer(randf_range(1.2, 2.4)).timeout.connect(_invite_accepted.bind(who, button))
+	if await Online.invite_to_squad(friend_uid):
+		toast("Squad invite sent to %s" % friend_name)
+	else:
+		toast("Could not send the invite")
 
 
-func _invite_accepted(who: String, button: Button) -> void:
-	if GameState.add_squad_member(who):
-		toast("%s joined your squad" % who)
-	if is_instance_valid(button):
-		button.text = "IN SQUAD"
+func _accept_invite(from_uid: String, from_name: String) -> void:
+	await Online.accept_invite(from_uid, from_name)
+	toast("You joined %s's squad" % from_name)
+
+
+func _decline_invite(from_uid: String) -> void:
+	await Online.decline_invite(from_uid)
+
+
+func _on_online_changed() -> void:
+	_friends_label.text = "%d/%d" % [Online.friends_online_count(), Online.friends.size()]
+	if is_instance_valid(_id_label):
+		_id_label.text = "ID %s" % Online.player_id if Online.player_id != "" else ""
+	_fill_friends_list()
 
 
 func _open_info(title: String, icon_name: String, lines: Array, button_text: String = "", action: Callable = Callable()) -> void:

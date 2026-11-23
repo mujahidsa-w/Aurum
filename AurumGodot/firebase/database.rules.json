@@ -1,0 +1,55 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "profiles": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        "name": { ".validate": "newData.isString() && newData.val().length <= 32" }
+      }
+    },
+    "ids": {
+      "$pid": {
+        ".read": "auth != null",
+        ".write": "auth != null && !data.exists() && newData.val() === auth.uid",
+        ".validate": "$pid.matches(/^[0-9]{8}$/)"
+      }
+    },
+    "friends": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$fid": {
+          ".write": "auth != null && (auth.uid === $uid || (auth.uid === $fid && (!newData.exists() || root.child('requests').child($fid).child($uid).exists())))",
+          ".validate": "!newData.exists() || newData.val() === true"
+        }
+      }
+    },
+    "requests": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$from": { ".write": "auth != null && (auth.uid === $from || auth.uid === $uid)" }
+      }
+    },
+    "invites": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$from": {
+          ".write": "auth != null && (auth.uid === $uid || (auth.uid === $from && root.child('friends').child($from).child($uid).exists()))"
+        }
+      }
+    },
+    "joins": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$from": {
+          ".write": "auth != null && (auth.uid === $uid || (auth.uid === $from && root.child('invites').child($from).child($uid).exists()))"
+        }
+      }
+    }
+  }
+}

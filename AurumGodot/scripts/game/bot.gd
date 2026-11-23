@@ -18,6 +18,7 @@ var _strafe_t := 0.0
 var _semi_wait := 0.0
 var _stuck_t := 0.0
 var _last_pos := Vector3.ZERO
+var _want_stance := STAND
 
 
 func _ready() -> void:
@@ -30,6 +31,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	process_weapon(delta)
+	process_stance(delta)
 	if not alive:
 		velocity.x = 0.0
 		velocity.z = 0.0
@@ -56,10 +58,17 @@ func _physics_process(delta: float) -> void:
 		var side := Vector3(-dir.z, 0, dir.x) * _strafe
 		if dist > pref * 1.25:
 			move = (dir * 0.8 + side * 0.4).normalized()
+			_want_stance = STAND
 		elif dist < pref * 0.6:
 			move = (-dir * 0.7 + side * 0.5).normalized()
+			_want_stance = STAND
 		else:
 			move = side
+		# Holding a firing position: crawl or crouch-strafe like a real player.
+		if _want_stance == PRONE:
+			move = Vector3.ZERO
+		elif _want_stance == CROUCH:
+			move *= 0.6
 		_reaction -= delta
 		if _reaction <= 0.0:
 			_shoot_at(_target, dist, delta)
@@ -71,6 +80,7 @@ func _physics_process(delta: float) -> void:
 		else:
 			move = to_d.normalized()
 			face_dir = move
+		_want_stance = STAND
 	# Never walk into the sea.
 	if move != Vector3.ZERO and battle:
 		var ahead := global_position + move * 3.0
@@ -78,17 +88,26 @@ func _physics_process(delta: float) -> void:
 		if world != null and float(world.call("height_at", ahead.x, ahead.z)) < 1.0:
 			move = -move
 			_pick_destination()
+	if _want_stance != stance and not stance_locked():
+		set_stance(_want_stance)
 	var speed := RUN_SPEED * (0.75 if _target else 1.0)
-	velocity.x = move_toward(velocity.x, move.x * speed, 20.0 * delta)
-	velocity.z = move_toward(velocity.z, move.z * speed, 20.0 * delta)
+	if stance == CROUCH:
+		speed = 2.0
+	elif stance == PRONE:
+		speed = 1.0
+	if stance_locked():
+		speed = 0.0
+	velocity.x = move_toward(velocity.x, move.x * speed, 11.0 * delta)
+	velocity.z = move_toward(velocity.z, move.z * speed, 11.0 * delta)
 	if is_on_floor():
 		velocity.y = 0.0
 	else:
 		velocity.y -= GRAVITY * delta
 	move_and_slide()
 	if face_dir != Vector3.ZERO:
-		visual.rotation.y = lerp_angle(visual.rotation.y, atan2(-face_dir.x, -face_dir.z), 8.0 * delta)
+		visual.rotation.y = lerp_angle(visual.rotation.y, atan2(-face_dir.x, -face_dir.z), (2.5 if stance == PRONE else 7.0) * delta)
 	update_animation(_target != null)
+	process_footsteps(delta)
 	# Unstick: if barely moving while trying to, jump and choose a new destination.
 	_stuck_t += delta
 	if _stuck_t > 1.5:
@@ -135,12 +154,16 @@ func _decide() -> void:
 			best = other
 	if best != _target:
 		_reaction = randf_range(0.45, 1.1) * (1.4 - skill)
+		_want_stance = STAND
+		if best != null and randf() < 0.45:
+			var long_gun := has_weapon() and str(weapon()["class"]) in ["dmr", "sniper"]
+			_want_stance = PRONE if long_gun and best_d > 60.0 and randf() < 0.6 else CROUCH
 	_target = best
 
 
 func _can_see(other: Node3D) -> bool:
-	var from := global_position + Vector3(0, 1.55, 0)
-	var to := other.global_position + Vector3(0, 1.3, 0)
+	var from := global_position + Vector3(0, eye_height(), 0)
+	var to := other.global_position + Vector3(0, float(other.call("chest_height")) if other.has_method("chest_height") else 1.3, 0)
 	var q := PhysicsRayQueryParameters3D.create(from, to, LAYER_WORLD)
 	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
@@ -159,7 +182,11 @@ func _shoot_at(target: Node3D, dist: float, delta: float) -> void:
 		return
 	# Aim error grows with distance and shrinks with skill.
 	var err_deg := lerpf(2.6, 0.7, skill) + dist * 0.01
-	var aim := target.global_position + Vector3(0, randf_range(1.0, 1.65), 0)
+	var top: float = float(target.call("chest_height")) if target.has_method("chest_height") else 1.3
+	var aim := target.global_position + Vector3(0, randf_range(top * 0.75, top * 1.25), 0)
+	# Prone and crouched targets are harder to hit.
+	if target.get("stance") != null:
+		err_deg *= float([1.0, 1.15, 1.4][clampi(int(target.get("stance")), 0, 2)])
 	var muzzle_pos := muzzle.global_position if muzzle else global_position + Vector3(0, 1.4, 0)
 	var dir := spread_dir((aim - muzzle_pos).normalized(), err_deg * 2.0)
 	if try_fire(muzzle_pos + dir * dist, 1.0, true):

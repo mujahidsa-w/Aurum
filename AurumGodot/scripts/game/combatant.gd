@@ -18,6 +18,12 @@ const LAYER_PICKUP := 8
 const GRAVITY := 9.81
 const MAX_HEALTH := 100.0
 const HEAD_HEIGHT := 1.5
+const STAND := 0
+const CROUCH := 1
+const PRONE := 2
+## Collision capsule height and head-zone height per stance.
+const STANCE_HEIGHT := [1.8, 1.25, 0.62]
+const STANCE_HEAD := [1.5, 0.98, 0.34]
 
 var display_name := "Soldier"
 var health := MAX_HEALTH
@@ -33,6 +39,9 @@ var mags := {}
 var reserve := {}
 var fire_mode := 0
 var medkits := 0
+## Body posture: STAND, CROUCH or PRONE.
+var stance := STAND
+var sprinting := false
 
 var visual: Node3D
 var body_mesh: MeshInstance3D
@@ -49,18 +58,25 @@ var _flash_light: OmniLight3D
 var _flash_mesh: MeshInstance3D
 var _audio: AudioStreamPlayer3D
 var _fx_audio: AudioStreamPlayer3D
+var _shape: CollisionShape3D
+var _capsule: CapsuleShape3D
+var _stance_lock := 0.0
+var _last_headshot := false
+var _step_audio: AudioStreamPlayer3D
+var _step_dist := 0.0
+var _step_n := 0
 
 
 func setup_body(accent: Color, layer: int, character_id: String = "", outfit: String = "original") -> void:
 	collision_layer = layer
 	collision_mask = LAYER_WORLD | LAYER_PLAYER | LAYER_BOT
-	var shape := CollisionShape3D.new()
-	var cap := CapsuleShape3D.new()
-	cap.radius = 0.33
-	cap.height = 1.8
-	shape.shape = cap
-	shape.position = Vector3(0, 0.9, 0)
-	add_child(shape)
+	_shape = CollisionShape3D.new()
+	_capsule = CapsuleShape3D.new()
+	_capsule.radius = 0.31
+	_capsule.height = 1.8
+	_shape.shape = _capsule
+	_shape.position = Vector3(0, 0.9, 0)
+	add_child(_shape)
 	visual = Node3D.new()
 	visual.name = "Visual"
 	add_child(visual)
@@ -88,6 +104,11 @@ func setup_body(accent: Color, layer: int, character_id: String = "", outfit: St
 	_fx_audio.unit_size = 4.0
 	_fx_audio.max_distance = 40.0
 	add_child(_fx_audio)
+	_step_audio = AudioStreamPlayer3D.new()
+	_step_audio.unit_size = 3.0
+	_step_audio.max_distance = 45.0
+	_step_audio.max_polyphony = 2
+	add_child(_step_audio)
 
 
 # --- Weapons -------------------------------------------------------------------
@@ -279,6 +300,15 @@ func start_reload() -> void:
 		return
 	_reload_left = float(w["reload"])
 	_play_fx(Sfx.reload_sound())
+	if character:
+		var clip := "reload_stand"
+		if stance == PRONE:
+			clip = "reload_prone"
+		elif stance == CROUCH:
+			clip = "reload_crouch"
+		elif Vector2(velocity.x, velocity.z).length() > 0.6:
+			clip = "reload_walk"
+		character.play_action(clip, _reload_left, 0.2)
 
 
 func _finish_reload() -> void:
@@ -324,7 +354,114 @@ func update_animation(aiming: bool) -> void:
 		return
 	var horiz := Vector2(velocity.x, velocity.z).length()
 	var pistol := has_weapon() and str(weapon()["class"]) == "pistol"
-	character.set_state(horiz, has_weapon(), pistol, aiming, not is_on_floor() and absf(velocity.y) > 1.0)
+	character.set_state(horiz, has_weapon(), pistol, aiming, not is_on_floor() and absf(velocity.y) > 1.0, stance, sprinting)
+
+
+# --- Stance ----------------------------------------------------------------------
+
+## True while a stance change is playing (no moving or shooting during it).
+func stance_locked() -> bool:
+	return _stance_lock > 0.0
+
+
+func process_stance(delta: float) -> void:
+	_stance_lock = maxf(_stance_lock - delta, 0.0)
+
+
+## Changes posture with a short transition. Returns false when blocked (e.g. no headroom).
+func set_stance(new_stance: int) -> bool:
+	if new_stance == stance or not alive:
+		return false
+	if new_stance < stance and not _has_headroom(float(STANCE_HEIGHT[new_stance])):
+		return false
+	var old := stance
+	stance = new_stance
+	_apply_capsule()
+	var lock := 0.28
+	if old == PRONE or new_stance == PRONE:
+		lock = 0.85 if (old == STAND or new_stance == STAND) else 0.65
+	_stance_lock = lock
+	if character:
+		if old == STAND and new_stance == CROUCH:
+			character.play_action("stand_to_crouch", lock, 0.12)
+		elif old == CROUCH and new_stance == STAND:
+			character.play_action("stand_to_crouch", lock, 0.12, true)
+		elif new_stance == PRONE:
+			character.play_action("crouch_to_prone", lock, 0.2)
+		elif old == PRONE:
+			character.play_action("prone_to_crouch", lock, 0.2)
+	if new_stance != STAND:
+		sprinting = false
+	play_body_sound(Sfx.land_thud() if new_stance == PRONE else Sfx.cloth(), -6.0 if new_stance == PRONE else -8.0)
+	_on_stance_changed(old, new_stance)
+	return true
+
+
+## Footsteps from distance travelled: stride and loudness depend on speed and stance
+## (sprinting is loud, crouch-walking is quiet, crawling only rustles).
+func process_footsteps(delta: float) -> void:
+	if _step_audio == null or not is_on_floor():
+		return
+	var horiz := Vector2(velocity.x, velocity.z).length()
+	if horiz < 0.4:
+		_step_dist = 0.0
+		return
+	_step_dist += horiz * delta
+	var stride := 0.72
+	var vol := -9.0
+	if stance == PRONE:
+		stride = 0.75
+		vol = -14.0
+	elif stance == CROUCH:
+		stride = 0.6
+		vol = -16.0
+	elif horiz > 5.4:
+		stride = 1.32
+		vol = 1.0
+	elif horiz > 3.0:
+		stride = 1.05
+		vol = -3.0
+	if _step_dist < stride:
+		return
+	_step_dist = 0.0
+	_step_n += 1
+	_step_audio.stream = Sfx.cloth() if stance == PRONE else Sfx.footstep(_step_n)
+	_step_audio.volume_db = vol + randf_range(-1.5, 1.0)
+	_step_audio.pitch_scale = randf_range(0.92, 1.08)
+	_step_audio.play()
+
+
+func play_body_sound(stream: AudioStream, volume_db: float = -4.0) -> void:
+	if _step_audio:
+		_step_audio.stream = stream
+		_step_audio.volume_db = volume_db
+		_step_audio.pitch_scale = randf_range(0.95, 1.05)
+		_step_audio.play()
+
+
+func eye_height() -> float:
+	return float([1.55, 1.08, 0.42][stance])
+
+
+func chest_height() -> float:
+	return float([1.3, 0.85, 0.24][stance])
+
+
+func _apply_capsule() -> void:
+	if _capsule == null:
+		return
+	var h := float(STANCE_HEIGHT[stance])
+	_capsule.radius = 0.31 if stance != PRONE else 0.3
+	_capsule.height = maxf(h, _capsule.radius * 2.0)
+	_shape.position = Vector3(0, _capsule.height * 0.5, 0)
+
+
+func _has_headroom(height: float) -> bool:
+	var from := global_position + Vector3(0, 0.3, 0)
+	var to := global_position + Vector3(0, height + 0.05, 0)
+	var exclude: Array[RID] = [get_rid()]
+	var q := PhysicsRayQueryParameters3D.create(from, to, LAYER_WORLD, exclude)
+	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
 
 # --- Damage --------------------------------------------------------------------
@@ -333,8 +470,9 @@ func take_hit(damage: float, attacker: Node, point: Vector3) -> Dictionary:
 	if not alive:
 		return {"damage": 0.0, "headshot": false, "killed": false}
 	var local_y := point.y - global_position.y
-	var head := local_y > HEAD_HEIGHT
-	var mult := WeaponDB.HEADSHOT if head else (WeaponDB.LIMB if local_y < 0.8 else 1.0)
+	var head := local_y > float(STANCE_HEAD[stance])
+	var mult := WeaponDB.HEADSHOT if head else (WeaponDB.LIMB if local_y < 0.8 and stance == STAND else 1.0)
+	_last_headshot = head
 	var dmg := damage * mult
 	health = maxf(health - dmg, 0.0)
 	health_changed.emit(health)
@@ -363,7 +501,10 @@ func die(killer: Node) -> void:
 	collision_layer = 0
 	collision_mask = LAYER_WORLD
 	_flash_t = 0.0
-	if visual:
+	sprinting = false
+	if character and character.play_death(stance, _last_headshot):
+		pass
+	elif visual:
 		var tw := create_tween()
 		tw.set_parallel(true)
 		tw.tween_property(visual, "rotation:x", -PI * 0.5, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
@@ -405,4 +546,8 @@ func _on_fired(_w: Dictionary) -> void:
 
 
 func _on_damaged(_amount: float, _attacker: Node) -> void:
+	pass
+
+
+func _on_stance_changed(_old: int, _new: int) -> void:
 	pass

@@ -67,6 +67,62 @@ static func reload_sound() -> AudioStreamWAV:
 	return wav
 
 
+## Boot on dirt/grass: a soft low thud plus a short gritty scrape. 4 variations.
+static func footstep(variant: int) -> AudioStreamWAV:
+	var key := "step_%d" % (variant % 4)
+	if _cache.has(key):
+		return _cache[key]
+	var pitch := 70.0 + float(variant % 4) * 9.0
+	var fn := func(t: float, noise: float, lp: float) -> float:
+		var thud := sin(TAU * pitch * t) * exp(-t * 38.0)
+		var scrape := lp * exp(-absf(t - 0.035) * 60.0)
+		return thud * 0.55 + scrape * 0.7 + noise * exp(-t * 160.0) * 0.12
+	var wav := _synth(0.16, fn, 0.12, 31 + variant)
+	_cache[key] = wav
+	return wav
+
+
+## Heavy landing / dropping prone onto the ground.
+static func land_thud() -> AudioStreamWAV:
+	if _cache.has("land"):
+		return _cache["land"]
+	var fn := func(t: float, noise: float, lp: float) -> float:
+		return sin(TAU * 55.0 * t) * exp(-t * 18.0) * 0.8 + lp * exp(-t * 25.0) * 0.8 + noise * exp(-t * 90.0) * 0.15
+	var wav := _synth(0.35, fn, 0.08, 41)
+	_cache["land"] = wav
+	return wav
+
+
+## Cloth rustle used for stance changes.
+static func cloth() -> AudioStreamWAV:
+	if _cache.has("cloth"):
+		return _cache["cloth"]
+	var fn := func(t: float, noise: float, lp: float) -> float:
+		var env := sin(PI * clampf(t / 0.32, 0.0, 1.0))
+		return (noise - lp) * env * 0.35
+	var wav := _synth(0.32, fn, 0.35, 53)
+	_cache["cloth"] = wav
+	return wav
+
+
+## Studio intro: a deep swell, then a soft bell-like chime with a shimmering tail.
+static func intro_chime() -> AudioStreamWAV:
+	if _cache.has("intro"):
+		return _cache["intro"]
+	var fn := func(t: float, _noise: float, lp: float) -> float:
+		var swell := sin(TAU * 55.0 * t) * sin(PI * clampf(t / 1.6, 0.0, 1.0)) * 0.45
+		var air := lp * sin(PI * clampf(t / 1.8, 0.0, 1.0)) * 0.25
+		var bt := t - 1.35
+		var bell := 0.0
+		if bt > 0.0:
+			var env := exp(-bt * 1.6)
+			bell = (sin(TAU * 659.0 * bt) * 0.5 + sin(TAU * 988.0 * bt) * 0.3 + sin(TAU * 1318.0 * bt) * 0.18 + sin(TAU * 1976.0 * bt) * 0.1 * sin(bt * 9.0)) * env * 0.55
+		return swell + air + bell
+	var wav := _synth(4.2, fn, 0.02, 77)
+	_cache["intro"] = wav
+	return wav
+
+
 static func hit_marker() -> AudioStreamWAV:
 	if _cache.has("hit"):
 		return _cache["hit"]
